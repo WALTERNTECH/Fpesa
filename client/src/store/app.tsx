@@ -86,8 +86,6 @@ export function useApp(): AppValue {
 
 function dismissBootScreen(): void {
   const boot = document.getElementById('boot');
-  const timer = (window as unknown as { __fpesaBootTimer?: number }).__fpesaBootTimer;
-  if (timer) window.clearInterval(timer);
   if (!boot) return;
   boot.classList.add('is-done');
   window.setTimeout(() => boot.remove(), 500);
@@ -109,6 +107,13 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
 
   const lastPrice = useRef(0);
   const toastId = useRef(0);
+  const flashTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (flashTimer.current) window.clearTimeout(flashTimer.current);
+    };
+  }, []);
 
   const pushToast = useCallback((toast: Omit<Toast, 'id'>) => {
     const id = ++toastId.current;
@@ -176,6 +181,11 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
         if (msg.price !== lastPrice.current) {
           setTickDir(msg.price > lastPrice.current ? 'up' : 'down');
           lastPrice.current = msg.price;
+          // Flash the direction, then settle back to the resting colour.
+          // Leaving it applied would paint the price by the last random tick
+          // rather than by where the market actually is.
+          if (flashTimer.current) window.clearTimeout(flashTimer.current);
+          flashTimer.current = window.setTimeout(() => setTickDir(null), 450);
         }
         return;
       }

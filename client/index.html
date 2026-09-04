@@ -109,13 +109,34 @@
       .boot-bars i:nth-child(5) { height: 25px; animation-delay: 0.36s; }
       .boot-bars i:nth-child(6) { height: 13px; animation-delay: 0.45s; }
 
+      /* The boot stages cycle in pure CSS. Doing this with an inline <script>
+         would need a script-src hash in the CSP that has to be kept in sync
+         with the markup by hand — not worth it for four labels. */
       .boot-status {
+        position: relative;
+        width: 260px;
+        height: 16px;
         font-size: 12.5px;
         font-weight: 500;
         letter-spacing: 0.13em;
         text-transform: uppercase;
         color: #5a6478;
-        min-height: 16px;
+        text-align: center;
+      }
+      .boot-status span {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        animation: boot-cycle 3.6s ease-in-out infinite;
+      }
+      .boot-status span:nth-child(1) { animation-delay: 0s; }
+      .boot-status span:nth-child(2) { animation-delay: 0.9s; }
+      .boot-status span:nth-child(3) { animation-delay: 1.8s; }
+      .boot-status span:nth-child(4) { animation-delay: 2.7s; }
+      @keyframes boot-cycle {
+        0%, 2% { opacity: 0; }
+        6%, 21% { opacity: 1; }
+        25%, 100% { opacity: 0; }
       }
       .boot-rail {
         width: 190px;
@@ -157,6 +178,15 @@
           border-color: var(--boot-blue);
           opacity: 0.35;
         }
+        /* Without the cycle animation every stage would sit at opacity 0,
+           leaving no status text at all. Pin the first one open. */
+        .boot-status span {
+          animation: none;
+          opacity: 0;
+        }
+        .boot-status span:nth-child(1) {
+          opacity: 1;
+        }
       }
     </style>
   </head>
@@ -170,27 +200,14 @@
       <div class="boot-bars" aria-hidden="true">
         <i></i><i></i><i></i><i></i><i></i><i></i>
       </div>
-      <div class="boot-status" id="boot-status">Connecting to market feed</div>
+      <div class="boot-status">
+        <span>Connecting to market feed</span>
+        <span>Loading XAU/USD quotes</span>
+        <span>Syncing live prices</span>
+        <span>Preparing trading desk</span>
+      </div>
       <div class="boot-rail" aria-hidden="true"><i></i></div>
     </div>
-
-    <script>
-      // Cycles the real boot stages. React clears this once the feed is live.
-      (function () {
-        var stages = [
-          'Connecting to market feed',
-          'Loading XAU/USD quotes',
-          'Syncing live prices',
-          'Preparing trading desk',
-        ];
-        var el = document.getElementById('boot-status');
-        var i = 0;
-        window.__fpesaBootTimer = setInterval(function () {
-          i = (i + 1) % stages.length;
-          if (el) el.textContent = stages[i];
-        }, 900);
-      })();
-    </script>
 
     <script type="module" src="/src/main.tsx"></script>
   </body>

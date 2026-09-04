@@ -250,7 +250,8 @@ export function PriceChart(): JSX.Element {
           </span>
           <span className={'chg tnum ' + (up ? 'up' : 'down')}>
             {up ? '+' : '−'}
-            {Math.abs(change).toFixed(2)} ({Math.abs(changePct).toFixed(2)}%)
+            {Math.abs(change).toFixed(2)} ({up ? '+' : '−'}
+            {Math.abs(changePct).toFixed(2)}%)
           </span>
         </div>
 

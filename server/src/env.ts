@@ -64,6 +64,17 @@ export function assertEnv(): void {
   if (env.isProd && env.jwtSecret.length < 32) {
     throw new Error('JWT_SECRET must be at least 32 characters in production.');
   }
+
+  // Mock payments credit a real balance without any money arriving. On a
+  // production deployment that is a free-money bug: those balances become
+  // withdrawable the moment a live Palpluss key is configured. Refuse to boot
+  // rather than let the two settings ever be combined by accident.
+  if (env.isProd && env.paymentsMock) {
+    throw new Error(
+      'PAYMENTS_MOCK must not be enabled when NODE_ENV=production — it credits ' +
+      'deposits without taking payment. Unset it, or run with NODE_ENV=development.'
+    );
+  }
   if (!env.paymentsMock && !env.palpluss.apiKey) {
     console.warn(
       '[fpesa] PALPLUSS_API_KEY is not set — deposits and withdrawals will be ' +

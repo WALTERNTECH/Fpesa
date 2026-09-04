@@ -1,0 +1,31 @@
+# Render Blueprint for Fpesa.
+# One web service builds the React client and serves it alongside the API and
+# the market WebSocket, so there is a single origin and no CORS in production.
+services:
+  - type: web
+    name: fpesa
+    runtime: node
+    region: frankfurt
+    plan: free
+    branch: main
+    buildCommand: npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      # Everything below is set in the Render dashboard, never committed.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: PALPLUSS_API_KEY
+        sync: false
+      - key: PALPLUSS_WEBHOOK_TOKEN
+        sync: false
+      - key: PUBLIC_URL
+        sync: false

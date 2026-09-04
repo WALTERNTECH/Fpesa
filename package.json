@@ -1,0 +1,15 @@
+{
+  "name": "fpesa",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Fpesa — live FX & gold trading platform for Kenya",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "build": "npm --prefix server install && npm --prefix client install && npm --prefix client run build && npm --prefix server run build",
+    "start": "npm --prefix server run start",
+    "dev": "concurrently -n api,web -c blue,magenta \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "typecheck": "npm --prefix server run typecheck && npm --prefix client run typecheck"
+  },
+  "devDependencies": { "concurrently": "^9.1.0" }
+}

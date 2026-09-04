@@ -1,20 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../store/app';
+import { useInstall } from '../lib/pwa';
 import { ksh, price as fmtPrice, displayPhone, initials } from '../lib/format';
 import {
   BrandMark,
   IconArrowDown,
   IconArrowUp,
   IconChevron,
+  IconDownload,
   IconLogout,
   IconRefresh,
 } from './Icons';
 
 export function Brand(): JSX.Element {
   return (
-    <a className="brand" href="/" aria-label="Fpesa home">
+    <a className="brand" href="/" aria-label="Fpesa">
       <span className="brand-mark">
-        <BrandMark size={20} />
+        <BrandMark size={18} />
       </span>
       <span className="brand-word">
         <em>F</em>pesa
@@ -28,10 +30,10 @@ export function Header(): JSX.Element {
     user, quote, price, tickDir, accountMode, setAccountMode,
     openModal, logout, resetDemo,
   } = useApp();
+  const { available: canInstall, canPrompt, install } = useInstall();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Close the account menu on an outside click or Escape.
   useEffect(() => {
     if (!menuOpen) return;
     const onDown = (e: MouseEvent): void => {
@@ -53,126 +55,137 @@ export function Header(): JSX.Element {
   const up = change >= 0;
   const balance = user ? (accountMode === 'demo' ? user.demoBalance : user.realBalance) : 0;
 
+  const onInstall = async (): Promise<void> => {
+    setMenuOpen(false);
+    if (canPrompt) {
+      await install();
+      return;
+    }
+    // iOS has no prompt API; scroll the sheet with the manual steps into view.
+    document.querySelector('.install-sheet')?.scrollIntoView({ block: 'center' });
+  };
+
   return (
     <header className="header">
-      <div className="container header-inner">
-        <div className="header-left">
-          <Brand />
-          {quote && (
-            <div className="header-quote" title="Gold spot against the US dollar">
-              <span className="sym">XAU/USD</span>
-              <span className={'px tnum' + (tickDir ? ' tick-' + tickDir : '')}>
-                {fmtPrice(price)}
-              </span>
-              <span className={'chg tnum ' + (up ? 'up' : 'down')}>
-                {up ? '+' : '−'}
-                {Math.abs(changePct).toFixed(2)}%
-              </span>
-            </div>
-          )}
-        </div>
+      <div className="header-inner">
+        <Brand />
+
+        {quote && (
+          <div className="header-quote" title="Gold spot vs US dollar">
+            <span className="sym">XAU/USD</span>
+            <span className={'px tnum' + (tickDir ? ' tick-' + tickDir : '')}>
+              {fmtPrice(price)}
+            </span>
+            <span className={'chg tnum ' + (up ? 'up' : 'down')}>
+              {up ? '+' : '−'}
+              {Math.abs(changePct).toFixed(2)}%
+            </span>
+          </div>
+        )}
 
         <div className="header-actions">
           {!user ? (
             <>
-              <button className="btn btn-ghost" onClick={() => openModal('login')}>
+              <button className="btn btn-ghost btn-sm" onClick={() => openModal('login')}>
                 Log in
               </button>
-              <button className="btn btn-primary" onClick={() => openModal('register')}>
+              <button className="btn btn-primary btn-sm" onClick={() => openModal('register')}>
                 Register
               </button>
             </>
           ) : (
-            <>
+            <div className="pos-rel" ref={menuRef}>
               <button
-                className="btn btn-soft btn-sm"
-                onClick={() => openModal('deposit')}
-                title="Deposit via M-Pesa"
+                className="acct-btn"
+                onClick={() => setMenuOpen((v) => !v)}
+                aria-expanded={menuOpen}
+                aria-haspopup="menu"
               >
-                <IconArrowDown size={15} />
-                Deposit
+                <span className="avatar self">{initials(user.username)}</span>
+                <span className="acct-meta">
+                  <span className="bal tnum">{ksh(balance)}</span>
+                  <span className="who">{accountMode === 'demo' ? 'Demo' : 'Live'}</span>
+                </span>
+                <IconChevron size={14} />
               </button>
-              <div className="pos-rel" ref={menuRef}>
-                <button
-                  className="acct-btn"
-                  onClick={() => setMenuOpen((v) => !v)}
-                  aria-expanded={menuOpen}
-                  aria-haspopup="menu"
-                >
-                  <span className="avatar self">{initials(user.username)}</span>
-                  <span>
-                    <span className="bal tnum">{ksh(balance)}</span>
-                    <span className="who" style={{ display: 'block' }}>
-                      {accountMode === 'demo' ? 'Demo account' : 'Live account'}
-                    </span>
-                  </span>
-                  <IconChevron size={14} />
-                </button>
 
-                {menuOpen && (
-                  <div className="menu" role="menu">
-                    <div className="menu-head">
-                      <div className="n">{user.username}</div>
-                      <div className="p">{displayPhone(user.phone)}</div>
-                    </div>
-
-                    <button
-                      role="menuitem"
-                      onClick={() => {
-                        setAccountMode(accountMode === 'demo' ? 'real' : 'demo');
-                        setMenuOpen(false);
-                      }}
-                    >
-                      <IconRefresh size={15} />
-                      Switch to {accountMode === 'demo' ? 'live' : 'demo'} account
-                    </button>
-                    <button
-                      role="menuitem"
-                      onClick={() => {
-                        openModal('deposit');
-                        setMenuOpen(false);
-                      }}
-                    >
-                      <IconArrowDown size={15} />
-                      Deposit
-                    </button>
-                    <button
-                      role="menuitem"
-                      onClick={() => {
-                        openModal('withdraw');
-                        setMenuOpen(false);
-                      }}
-                    >
-                      <IconArrowUp size={15} />
-                      Withdraw
-                    </button>
-                    <button
-                      role="menuitem"
-                      onClick={() => {
-                        void resetDemo();
-                        setMenuOpen(false);
-                      }}
-                    >
-                      <IconRefresh size={15} />
-                      Reset demo balance
-                    </button>
-
-                    <div className="menu-sep" />
-                    <button
-                      role="menuitem"
-                      className="danger"
-                      onClick={() => {
-                        void logout();
-                        setMenuOpen(false);
-                      }}
-                    >
-                      <IconLogout size={15} />
-                      Log out
-                    </button>
+              {menuOpen && (
+                <div className="menu" role="menu">
+                  <div className="menu-head">
+                    <div className="n">{user.username}</div>
+                    <div className="p">{displayPhone(user.phone)}</div>
                   </div>
-                )}
-              </div>
-            </>
+
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setAccountMode(accountMode === 'demo' ? 'real' : 'demo');
+                      setMenuOpen(false);
+                    }}
+                  >
+                    <IconRefresh size={15} />
+                    Switch to {accountMode === 'demo' ? 'live' : 'demo'}
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      openModal('deposit');
+                      setMenuOpen(false);
+                    }}
+                  >
+                    <IconArrowDown size={15} />
+                    Deposit
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      openModal('withdraw');
+                      setMenuOpen(false);
+                    }}
+                  >
+                    <IconArrowUp size={15} />
+                    Withdraw
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      void resetDemo();
+                      setMenuOpen(false);
+                    }}
+                  >
+                    <IconRefresh size={15} />
+                    Reset demo balance
+                  </button>
+
+                  {canInstall && (
+                    <>
+                      <div className="menu-sep" />
+                      <button
+                        role="menuitem"
+                        className="accent"
+                        onClick={() => void onInstall()}
+                      >
+                        <IconDownload size={15} />
+                        Install app
+                      </button>
+                    </>
+                  )}
+
+                  <div className="menu-sep" />
+                  <button
+                    role="menuitem"
+                    className="danger"
+                    onClick={() => {
+                      void logout();
+                      setMenuOpen(false);
+                    }}
+                  >
+                    <IconLogout size={15} />
+                    Log out
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

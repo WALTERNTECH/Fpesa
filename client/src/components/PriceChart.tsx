@@ -255,7 +255,7 @@ export function PriceChart(): JSX.Element {
           </span>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="chart-switches">
           <div className="tf-switch" role="group" aria-label="Chart type">
             <button
               onClick={() => setView('candles')}

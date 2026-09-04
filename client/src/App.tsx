@@ -1,13 +1,11 @@
 import { useApp } from './store/app';
 import { Header } from './components/Header';
 import { NewsTicker } from './components/NewsTicker';
-import { Hero } from './components/Hero';
 import { PriceChart } from './components/PriceChart';
 import { TradePanel } from './components/TradePanel';
-import { ChatRoom } from './components/ChatRoom';
-import { ActivityFeed } from './components/ActivityFeed';
-import { Leaderboard } from './components/Leaderboard';
+import { SocialTabs } from './components/SocialTabs';
 import { SupportButton } from './components/SupportButton';
+import { InstallPrompt } from './components/InstallPrompt';
 import { AuthModal } from './components/AuthModal';
 import { WalletModal } from './components/WalletModal';
 import { Toasts } from './components/Toasts';
@@ -21,39 +19,17 @@ export function App(): JSX.Element {
       <Header />
       <NewsTicker />
 
-      <main>
-        <Hero />
-
-        <section className="section" id="desk">
-          <div className="container">
-            <div className="section-head">
-              <h2 style={{ fontSize: 20 }}>Trading desk</h2>
-              <span className="eyebrow">Live market · XAU/USD</span>
-            </div>
-            <div className="desk-grid">
-              <PriceChart />
-              <TradePanel />
-            </div>
-          </div>
-        </section>
-
-        <section className="section" id="community">
-          <div className="container">
-            <div className="section-head">
-              <h2 style={{ fontSize: 20 }}>The floor</h2>
-              <span className="eyebrow">Chat · Activity · Leaders</span>
-            </div>
-            <div className="social-grid">
-              <ChatRoom />
-              <ActivityFeed />
-              <Leaderboard />
-            </div>
-          </div>
-        </section>
+      <main className="app">
+        <div className="desk">
+          <PriceChart />
+          <TradePanel />
+        </div>
+        <SocialTabs />
       </main>
 
       <Footer />
       <SupportButton />
+      <InstallPrompt />
       <Toasts />
 
       {(modal === 'login' || modal === 'register') && <AuthModal mode={modal} />}

@@ -43,6 +43,10 @@ async function main(): Promise<void> {
           frameAncestors: ["'none'"],
           objectSrc: ["'none'"],
           baseUri: ["'self'"],
+          // Required for the installable app: the manifest and the service
+          // worker are both same-origin and must be explicitly allowed.
+          manifestSrc: ["'self'"],
+          workerSrc: ["'self'"],
         },
       },
       crossOriginEmbedderPolicy: false,
@@ -79,9 +83,18 @@ async function main(): Promise<void> {
     express.static(clientDist, {
       index: false,
       setHeaders: (res, filePath) => {
-        if (filePath.endsWith('index.html')) {
+        const name = path.basename(filePath);
+        if (name === 'sw.js') {
+          // Revalidate on every request so a new worker rolls out promptly.
+          // Deliberately not "no-store": some browsers refuse to register a
+          // service worker whose script is served with it.
           res.setHeader('Cache-Control', 'no-cache');
-        } else if (/\.[0-9a-f]{8,}\./i.test(path.basename(filePath))) {
+          res.setHeader('Service-Worker-Allowed', '/');
+        } else if (name === 'manifest.webmanifest') {
+          res.setHeader('Cache-Control', 'public, max-age=3600');
+        } else if (filePath.endsWith('index.html')) {
+          res.setHeader('Cache-Control', 'no-cache');
+        } else if (/\.[0-9a-f]{8,}\./i.test(name)) {
           res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         }
       },

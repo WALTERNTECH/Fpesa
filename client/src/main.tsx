@@ -2,7 +2,10 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AppProvider } from './store/app';
 import { App } from './App';
+import { registerServiceWorker } from './lib/pwa';
 import './styles/theme.css';
+
+registerServiceWorker();
 
 const container = document.getElementById('root');
 if (!container) throw new Error('Root container missing');

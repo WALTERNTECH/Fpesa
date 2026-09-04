@@ -199,9 +199,13 @@ export function TradePanel(): JSX.Element {
           {inlineError && <div className="panel-error">{inlineError}</div>}
 
           {!user && (
-            <p className="panel-note">
-              Browsing as a guest — markets are live. Create a free account to trade.
-            </p>
+            <button
+              className="btn btn-dark btn-block"
+              style={{ marginTop: 12 }}
+              onClick={() => openModal('login')}
+            >
+              Log in to trade
+            </button>
           )}
           {user && accountMode === 'real' && balance < config.minStake && (
             <button
@@ -209,13 +213,8 @@ export function TradePanel(): JSX.Element {
               style={{ marginTop: 12 }}
               onClick={() => openModal('deposit')}
             >
-              Deposit via M-Pesa
+              Deposit
             </button>
-          )}
-          {user && accountMode === 'demo' && (
-            <p className="panel-note">
-              Practising with demo funds. Switch to Live to trade real money.
-            </p>
           )}
         </div>
       </div>

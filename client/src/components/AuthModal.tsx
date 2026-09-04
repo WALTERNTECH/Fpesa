@@ -64,28 +64,14 @@ export function AuthModal({ mode }: { mode: Mode }): JSX.Element {
 
   return (
     <Modal
-      title={isRegister ? 'Create your Fpesa account' : 'Welcome back'}
+      title={isRegister ? 'Create account' : 'Log in'}
       subtitle={
         isRegister
-          ? 'Takes under a minute. Your demo account is funded instantly.'
-          : 'Log in to trade, deposit and withdraw.'
+          ? 'Demo account credited with ' + ksh(config.demoStartingBalance, true) + '.'
+          : undefined
       }
       onClose={closeModal}
     >
-      {isRegister && (
-        <div className="demo-banner">
-          <span className="ico" aria-hidden="true">
-            🎁
-          </span>
-          <div>
-            <div className="t">{ksh(config.demoStartingBalance, true)} demo balance</div>
-            <div className="d">
-              Practise on live market prices with zero risk before funding a live account.
-            </div>
-          </div>
-        </div>
-      )}
-
       <form onSubmit={(e) => void submit(e)} noValidate>
         {error && <div className="form-error">{error}</div>}
 
@@ -178,9 +164,9 @@ export function AuthModal({ mode }: { mode: Mode }): JSX.Element {
       </form>
 
       <p className="form-note">
-        {isRegister ? 'Already have an account? ' : 'New to Fpesa? '}
+        {isRegister ? 'Already registered? ' : 'No account? '}
         <button type="button" onClick={() => openModal(isRegister ? 'login' : 'register')}>
-          {isRegister ? 'Log in' : 'Create a free account'}
+          {isRegister ? 'Log in' : 'Create one'}
         </button>
       </p>
     </Modal>

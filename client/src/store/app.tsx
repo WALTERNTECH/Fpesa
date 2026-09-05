@@ -83,6 +83,8 @@ const DEFAULT_CONFIG: PlatformConfig = {
   maxStake: 20000,
   payoutRate: 0.87,
   durations: [5, 10, 15, 30, 60],
+  multipliers: { '5': 2000, '10': 1400, '15': 1150, '30': 800, '60': 575 },
+  maxProfitMultiple: 3,
   minDeposit: 50,
   minWithdrawal: 100,
   supportTelegram: 'https://t.me/KRYPTONinv',
@@ -238,26 +240,36 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
         });
 
         const profit = trade.profit ?? 0;
+        const closedAt = trade.exitPrice?.toFixed(2) ?? '';
+        // Why it closed matters as much as the number: a stop-out means the
+        // move ran through the whole stake, not that the timer simply ran out.
+        const why =
+          trade.closeReason === 'STOP_OUT'
+            ? 'Stopped out at ' + closedAt
+            : trade.closeReason === 'TAKE_PROFIT'
+              ? 'Max profit hit at ' + closedAt
+              : trade.direction + ' · closed at ' + closedAt;
+
         if (trade.status === 'WON') {
           pushToast({
             tone: 'win',
             icon: '▲',
-            title: 'Trade won  +KSh ' + profit.toFixed(2),
-            detail: trade.direction + ' · closed at ' + trade.exitPrice?.toFixed(2),
+            title: 'Closed  +KSh ' + profit.toFixed(2),
+            detail: why,
           });
         } else if (trade.status === 'LOST') {
           pushToast({
             tone: 'lose',
             icon: '▼',
-            title: 'Trade lost  −KSh ' + trade.stake.toFixed(2),
-            detail: trade.direction + ' · closed at ' + trade.exitPrice?.toFixed(2),
+            title: 'Closed  −KSh ' + Math.abs(profit).toFixed(2),
+            detail: why,
           });
         } else if (trade.status === 'TIE') {
           pushToast({
             tone: 'info',
             icon: '=',
-            title: 'Tie — stake returned',
-            detail: 'Price closed exactly at entry.',
+            title: 'Closed flat — stake returned',
+            detail: why,
           });
         }
       }

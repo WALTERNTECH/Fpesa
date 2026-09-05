@@ -201,7 +201,11 @@ export function PriceChart(): JSX.Element {
     if (!series) return;
     const lines = linesRef.current;
 
-    const wanted = new Set(openTrades.map((t) => t.id));
+    const wanted = new Set<string>();
+    for (const t of openTrades) {
+      wanted.add(t.id);
+      wanted.add(t.id + ':stop');
+    }
     for (const [id, line] of lines) {
       if (!wanted.has(id)) {
         try {
@@ -224,6 +228,20 @@ export function PriceChart(): JSX.Element {
         title: trade.direction + ' ' + trade.stake,
       });
       lines.set(trade.id, line);
+
+      // The level the position closes itself at, so the trader can see how
+      // much room is left rather than inferring it from the running number.
+      if (trade.stopOutPrice !== null) {
+        const stop = series.createPriceLine({
+          price: trade.stopOutPrice,
+          color: '#e5384a',
+          lineWidth: 1,
+          lineStyle: LineStyle.Dotted,
+          axisLabelVisible: true,
+          title: 'stop out',
+        });
+        lines.set(trade.id + ':stop', stop);
+      }
     }
   }, [openTrades, view]);
 

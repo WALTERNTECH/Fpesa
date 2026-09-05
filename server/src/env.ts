@@ -42,6 +42,19 @@ export const env = {
   twelveDataKey: str('TWELVEDATA_API_KEY'),
 
   payoutRate: num('TRADE_PAYOUT_RATE', 0.87),
+  /**
+   * Position multiplier per duration, as "seconds:multiplier" pairs. The stake
+   * is margin: profit is stake x multiplier x fractional price move.
+   *
+   * Defaults are tuned to the feed's volatility so a one-standard-deviation
+   * move over the chosen duration is worth about 40% of the stake, whichever
+   * duration is picked. That makes a wipe-out a real risk (roughly 1 trade in
+   * 80) without making it the normal outcome. Retune these if you swap in a
+   * price feed with different volatility.
+   */
+  multipliers: str('TRADE_MULTIPLIERS', '5:2000,10:1400,15:1150,30:800,60:575'),
+  /** Profit ceiling as a multiple of stake. Caps the operator's liability. */
+  maxProfitMultiple: num('TRADE_MAX_PROFIT_MULTIPLE', 3),
   minStake: num('TRADE_MIN_STAKE', 50),
   maxStake: num('TRADE_MAX_STAKE', 20000),
   demoStartingBalance: num('DEMO_STARTING_BALANCE', 10000),

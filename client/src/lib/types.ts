@@ -27,6 +27,11 @@ export type Trade = {
   openedAt: string;
   expiresAt: string;
   settledAt: string | null;
+  multiplier: number;
+  stopOutPrice: number | null;
+  takeProfitPrice: number | null;
+  maxProfit: number;
+  closeReason: 'EXPIRY' | 'STOP_OUT' | 'TAKE_PROFIT' | null;
 };
 
 export type Candle = {
@@ -96,6 +101,8 @@ export type PlatformConfig = {
   maxStake: number;
   payoutRate: number;
   durations: number[];
+  multipliers: Record<string, number>;
+  maxProfitMultiple: number;
   minDeposit: number;
   minWithdrawal: number;
   supportTelegram: string;

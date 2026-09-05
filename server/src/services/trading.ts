@@ -20,6 +20,11 @@ export type TradeRow = {
   opened_at: string;
   expires_at: string;
   settled_at: string | null;
+  multiplier: string | number;
+  stop_out_price: string | number | null;
+  take_profit_price: string | number | null;
+  max_profit: string | number | null;
+  close_reason: 'EXPIRY' | 'STOP_OUT' | 'TAKE_PROFIT' | null;
 };
 
 export type PublicTrade = {
@@ -38,6 +43,11 @@ export type PublicTrade = {
   openedAt: string;
   expiresAt: string;
   settledAt: string | null;
+  multiplier: number;
+  stopOutPrice: number | null;
+  takeProfitPrice: number | null;
+  maxProfit: number;
+  closeReason: TradeRow['close_reason'];
 };
 
 export function toPublicTrade(row: TradeRow): PublicTrade {
@@ -57,11 +67,73 @@ export function toPublicTrade(row: TradeRow): PublicTrade {
     openedAt: row.opened_at,
     expiresAt: row.expires_at,
     settledAt: row.settled_at,
+    multiplier: Number(row.multiplier ?? 1),
+    stopOutPrice: row.stop_out_price === null ? null : Number(row.stop_out_price),
+    takeProfitPrice: row.take_profit_price === null ? null : Number(row.take_profit_price),
+    maxProfit: Number(row.max_profit ?? row.stake),
+    closeReason: row.close_reason,
   };
 }
 
 export const ALLOWED_DURATIONS = [5, 10, 15, 30, 60] as const;
 export type Duration = (typeof ALLOWED_DURATIONS)[number];
+
+/** Parsed once from TRADE_MULTIPLIERS ("5:2000,10:1400,..."). */
+const MULTIPLIERS: Map<number, number> = (() => {
+  const map = new Map<number, number>();
+  for (const pair of env.multipliers.split(',')) {
+    const [secs, mult] = pair.split(':');
+    const s = Number(secs);
+    const m = Number(mult);
+    if (Number.isFinite(s) && Number.isFinite(m) && m > 0) map.set(s, m);
+  }
+  for (const d of ALLOWED_DURATIONS) {
+    if (!map.has(d)) map.set(d, 1000);
+  }
+  return map;
+})();
+
+export function multiplierFor(durationSec: number): number {
+  return MULTIPLIERS.get(durationSec) ?? 1000;
+}
+
+/**
+ * The price levels at which a position closes itself.
+ *
+ * Stop-out sits where the loss equals the whole stake — the trader can lose
+ * what they staked and not a shilling more. Take-profit sits at the liability
+ * ceiling. Both are computed at entry and shown to the trader, so the exit
+ * conditions are known before the position is opened.
+ */
+export function exitLevels(
+  entry: number,
+  direction: 'BUY' | 'SELL',
+  multiplier: number,
+  maxProfitMultiple: number
+): { stopOut: number; takeProfit: number } {
+  const lossMove = 1 / multiplier;
+  const gainMove = maxProfitMultiple / multiplier;
+  const sign = direction === 'BUY' ? 1 : -1;
+  return {
+    stopOut: round2(entry * (1 - sign * lossMove)),
+    takeProfit: round2(entry * (1 + sign * gainMove)),
+  };
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/** Running profit on an open position at the current price. */
+export function unrealisedProfit(
+  trade: Pick<PublicTrade, 'stake' | 'multiplier' | 'entryPrice' | 'direction' | 'maxProfit'>,
+  price: number
+): number {
+  const move = (price - trade.entryPrice) / trade.entryPrice;
+  const signed = trade.direction === 'BUY' ? move : -move;
+  const raw = trade.stake * trade.multiplier * signed;
+  return round2(Math.min(Math.max(raw, -trade.stake), trade.maxProfit));
+}
 
 export class TradeError extends Error {
   constructor(public code: string, message: string, public status = 400) {
@@ -69,13 +141,27 @@ export class TradeError extends Error {
   }
 }
 
+/** What the tick monitor needs to decide whether a position must close now. */
+type LivePosition = {
+  id: string;
+  direction: 'BUY' | 'SELL';
+  stopOut: number;
+  takeProfit: number;
+};
+
 class TradingEngine {
   private timers = new Map<string, NodeJS.Timeout>();
+  private live = new Map<string, LivePosition>();
   private leaderboardTimer: NodeJS.Timeout | null = null;
+  private unsubscribeTicks: (() => void) | null = null;
 
   async start(): Promise<void> {
     await this.recoverOpenTrades();
-    // Keep the board fresh even during quiet periods.
+
+    // Watch every tick so a position that runs out of margin closes the moment
+    // it happens, rather than waiting for its expiry timer.
+    this.unsubscribeTicks = priceFeed.subscribe((tick) => this.checkLevels(tick.price));
+
     this.leaderboardTimer = setInterval(() => void this.publishLeaderboard(), 20_000);
     void this.publishLeaderboard();
   }
@@ -83,7 +169,33 @@ class TradingEngine {
   stop(): void {
     for (const t of this.timers.values()) clearTimeout(t);
     this.timers.clear();
+    this.live.clear();
+    this.unsubscribeTicks?.();
     if (this.leaderboardTimer) clearInterval(this.leaderboardTimer);
+  }
+
+  /**
+   * Closes any position whose price barrier has been crossed. Runs on every
+   * tick, so it stays a plain scan over open positions — settlement itself is
+   * idempotent, so a race with the expiry timer resolves harmlessly.
+   */
+  private checkLevels(price: number): void {
+    if (this.live.size === 0) return;
+    for (const pos of this.live.values()) {
+      const hitStop =
+        pos.direction === 'BUY' ? price <= pos.stopOut : price >= pos.stopOut;
+      const hitTarget =
+        pos.direction === 'BUY' ? price >= pos.takeProfit : price <= pos.takeProfit;
+      if (!hitStop && !hitTarget) continue;
+
+      this.live.delete(pos.id);
+      const timer = this.timers.get(pos.id);
+      if (timer) {
+        clearTimeout(timer);
+        this.timers.delete(pos.id);
+      }
+      void this.settle(pos.id, hitStop ? 'STOP_OUT' : 'TAKE_PROFIT');
+    }
   }
 
   /**
@@ -102,13 +214,27 @@ class TradingEngine {
     const rows = (data ?? []) as TradeRow[];
     if (rows.length) console.log('[trading] recovering ' + rows.length + ' open trade(s)');
     for (const row of rows) {
+      const trade = toPublicTrade(row);
       const msLeft = new Date(row.expires_at).getTime() - Date.now();
       if (msLeft <= 0) {
-        await this.settle(row.id);
+        await this.settle(row.id, 'EXPIRY');
       } else {
+        // Barriers have to be watched again after a restart, or a recovered
+        // position could run past its stop-out untouched until expiry.
+        this.track(trade);
         this.scheduleSettlement(row.id, msLeft);
       }
     }
+  }
+
+  private track(trade: PublicTrade): void {
+    if (trade.stopOutPrice === null || trade.takeProfitPrice === null) return;
+    this.live.set(trade.id, {
+      id: trade.id,
+      direction: trade.direction,
+      stopOut: trade.stopOutPrice,
+      takeProfit: trade.takeProfitPrice,
+    });
   }
 
   private scheduleSettlement(tradeId: string, msFromNow: number): void {
@@ -116,7 +242,8 @@ class TradingEngine {
     if (existing) clearTimeout(existing);
     const timer = setTimeout(() => {
       this.timers.delete(tradeId);
-      void this.settle(tradeId);
+      this.live.delete(tradeId);
+      void this.settle(tradeId, 'EXPIRY');
     }, Math.max(msFromNow, 0));
     this.timers.set(tradeId, timer);
   }
@@ -159,6 +286,13 @@ class TradingEngine {
     // The entry price is whatever the server's feed says right now — never a
     // value supplied by the browser.
     const entry = priceFeed.current().price;
+    const multiplier = multiplierFor(durationSec);
+    const { stopOut, takeProfit } = exitLevels(
+      entry,
+      direction,
+      multiplier,
+      env.maxProfitMultiple
+    );
 
     const { data, error } = await db.rpc('fpesa_place_trade', {
       p_user: userId,
@@ -169,6 +303,10 @@ class TradingEngine {
       p_entry: entry,
       p_payout_rate: env.payoutRate,
       p_symbol: SYMBOL,
+      p_multiplier: multiplier,
+      p_stop_out: stopOut,
+      p_take_profit: takeProfit,
+      p_max_profit: Math.round(rounded * env.maxProfitMultiple * 100) / 100,
     });
 
     if (error) {
@@ -188,17 +326,21 @@ class TradingEngine {
 
     const result = data as { trade: TradeRow; balance: string | number };
     const trade = toPublicTrade(result.trade);
+    this.track(trade);
     this.scheduleSettlement(trade.id, durationSec * 1000);
 
     return { trade, balance: Number(result.balance) };
   }
 
   /** Settles one trade against the live feed. Safe to call twice. */
-  async settle(tradeId: string): Promise<void> {
+  async settle(tradeId: string, reason: 'EXPIRY' | 'STOP_OUT' | 'TAKE_PROFIT'): Promise<void> {
     const exit = priceFeed.current().price;
+    this.live.delete(tradeId);
+
     const { data, error } = await db.rpc('fpesa_settle_trade', {
       p_trade: tradeId,
       p_exit: exit,
+      p_reason: reason,
     });
 
     if (error) {

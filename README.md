@@ -62,24 +62,49 @@ end without live IntaSend keys; requests settle themselves after six seconds.
 
 ## The trading engine
 
-A trade is a short-duration directional bet on XAU/USD.
+A trade is a short-duration leveraged position on XAU/USD. Profit tracks how far
+the price actually moved — it is not a fixed win/lose amount.
+
+```
+profit = stake × multiplier × (exit − entry) / entry     (sign flipped for Sell)
+         clamped to [ −stake , +stake × TRADE_MAX_PROFIT_MULTIPLE ]
+```
 
 1. The trader picks an amount (KSh 50 – 20,000), a duration (5/10/15/30/60s)
    and a direction (Buy or Sell).
 2. The **server** stamps the entry price from its own feed. A price supplied by
-   the browser is never trusted.
+   the browser is never trusted, and trades are refused until the feed has a
+   real upstream quote behind it.
 3. The stake is debited and the trade row is written **in one locked
    transaction** (`fpesa_place_trade`), so two taps cannot spend one balance.
-4. At expiry the server compares the exit price to the entry price:
-   - correct direction → stake × 1.87 returned (87% payout, configurable)
-   - wrong direction → stake lost
-   - exactly level → stake returned
+   The stop-out and take-profit levels are computed at entry and stored.
+4. The position closes on whichever comes first:
+   - **stop-out** — the move against the trader reaches the whole stake. The
+     tick monitor closes it the moment the barrier is crossed, without waiting
+     for the timer.
+   - **take-profit** — profit reaches the liability ceiling.
+   - **expiry** — the duration elapses, and the position settles at whatever
+     the P&L is.
 5. Settlement is idempotent (`fpesa_settle_trade` claims the row with
    `FOR UPDATE` and returns early if it is already closed), and open trades are
-   recovered and re-scheduled on boot — a restart mid-trade cannot strand a stake.
+   recovered, re-tracked and re-scheduled on boot — a restart mid-trade cannot
+   strand a stake or let a position run past its stop-out.
 
-While the countdown runs, the panel shows the position's running result against
-the live tick, which is what the trader watches.
+The stake is the entire downside: a position can be wiped out, but it can never
+take an account negative. While the countdown runs, the panel shows the running
+P&L and how much of the stake the move has already consumed.
+
+### Tuning the multiplier
+
+`TRADE_MULTIPLIERS` ("seconds:multiplier" pairs) scales the stake. The defaults
+are derived from the feed's volatility so that a one-standard-deviation move
+over the chosen duration is worth roughly 40% of the stake at every duration —
+which puts a wipe-out at about 2.5σ, or roughly 1 trade in 80. **Retune these
+if you change the price feed**, or the risk profile changes with it.
+
+`TRADE_MAX_PROFIT_MULTIPLE` (default 3) caps profit at a multiple of stake. It
+exists to bound the operator's liability on a news spike; the loss side is
+already bounded by the stake.
 
 ---
 
@@ -130,6 +155,10 @@ worth being explicit about:
 > **A 5-second trade settles against interpolated prices, not real market
 > ticks.** The shorter the duration, the more the outcome is driven by the
 > interpolator rather than the gold market.
+
+This matters more under the multiplier model than it did under a fixed payout:
+at ×2000, a one-cent wobble in the interpolated price is worth real money, so
+the synthetic ticks between polls are directly setting P&L.
 
 Before running real money through short durations, plug in a genuine tick feed.
 `PRICE_MODE` and the upstream fetchers in `server/src/services/prices.ts` are

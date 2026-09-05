@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../store/app';
 import { ksh, price as fmtPrice } from '../lib/format';
+import { marginUsed, unrealisedProfit } from '../lib/pnl';
 import type { Trade } from '../lib/types';
 
 const RADIUS = 17;
@@ -37,7 +38,6 @@ export function OpenPositions(): JSX.Element | null {
   const { openTrades, price } = useApp();
   const [now, setNow] = useState(() => Date.now());
 
-  // Only run a clock while something is actually counting down.
   useEffect(() => {
     if (openTrades.length === 0) return;
     const id = window.setInterval(() => setNow(Date.now()), 100);
@@ -58,13 +58,10 @@ export function OpenPositions(): JSX.Element | null {
 
       <div className="card-body" style={{ paddingTop: 12, paddingBottom: 12 }}>
         {openTrades.map((trade) => {
-          // Running result against the live tick: this is what the trader
-          // watches while the countdown finishes.
-          const winning =
-            trade.direction === 'BUY' ? price > trade.entryPrice : price < trade.entryPrice;
-          const level = price === trade.entryPrice;
-          const projected = level ? 0 : winning ? trade.stake * trade.payoutRate : -trade.stake;
-          const move = price - trade.entryPrice;
+          const profit = unrealisedProfit(trade, price);
+          const used = marginUsed(trade, price);
+          const winning = profit > 0;
+          const flat = profit === 0;
 
           return (
             <div
@@ -74,21 +71,25 @@ export function OpenPositions(): JSX.Element | null {
               <Countdown trade={trade} now={now} />
 
               <div className="meta">
-                <div className="dir">{trade.direction === 'BUY' ? 'Buy' : 'Sell'}</div>
+                <div className="dir">
+                  {trade.direction === 'BUY' ? 'Buy' : 'Sell'} · ×{trade.multiplier}
+                </div>
                 <div className="stake tnum">{ksh(trade.stake)}</div>
                 <div className="entry tnum">
-                  Entry {fmtPrice(trade.entryPrice)} · Now {fmtPrice(price)} (
-                  {move >= 0 ? '+' : '−'}
-                  {Math.abs(move).toFixed(2)})
+                  {fmtPrice(trade.entryPrice)} → {fmtPrice(price)}
+                  {trade.stopOutPrice !== null && (
+                    <> · out {fmtPrice(trade.stopOutPrice)}</>
+                  )}
+                </div>
+                {/* How much of the stake the move has already eaten. Full bar
+                    means the position is about to close itself. */}
+                <div className="margin-bar" aria-hidden="true">
+                  <i style={{ width: Math.round(used * 100) + '%' }} />
                 </div>
               </div>
 
-              <div
-                className={
-                  'pnl tnum ' + (level ? '' : winning ? 'win' : 'lose')
-                }
-              >
-                {level ? '—' : (projected > 0 ? '+' : '−') + ksh(Math.abs(projected))}
+              <div className={'pnl tnum ' + (flat ? '' : winning ? 'win' : 'lose')}>
+                {flat ? '—' : (winning ? '+' : '−') + ksh(Math.abs(profit))}
               </div>
             </div>
           );

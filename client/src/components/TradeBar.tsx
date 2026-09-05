@@ -50,7 +50,9 @@ export function TradeBar(): JSX.Element {
         {/* The account mode is already on the header button, so the chip only
             carries what changes per trade — amount and expiry. */}
         <span className="amt tnum">{ksh(Number(stake) || 0, true)}</span>
-        <span className="dur tnum">{durationLabel(duration)}</span>
+        {/* Not ".dur" — that class is the duration *button* in the panel grid,
+            and reusing it here inherited a border and a 46px min-height. */}
+        <span className="exp tnum">{durationLabel(duration)}</span>
       </button>
 
       <button

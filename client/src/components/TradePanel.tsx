@@ -12,10 +12,13 @@ export function TradePanel(): JSX.Element {
   } = useApp();
 
   const stakeAmount = Number(stake);
-  const payout = useMemo(
-    () => (Number.isFinite(stakeAmount) ? stakeAmount * (1 + config.payoutRate) : 0),
-    [stakeAmount, config.payoutRate]
-  );
+  const multiplier = config.multipliers?.[String(duration)] ?? 1000;
+  const maxProfit = Number.isFinite(stakeAmount)
+    ? stakeAmount * config.maxProfitMultiple
+    : 0;
+  // The move that would wipe the stake out, shown as a percentage because the
+  // absolute price level depends on which side the trader takes.
+  const wipeoutMovePct = useMemo(() => (1 / multiplier) * 100, [multiplier]);
 
   const quickAmounts = useMemo(() => {
     const options = [config.minStake, 200, 500, 1000, 5000, config.maxStake];
@@ -34,7 +37,7 @@ export function TradePanel(): JSX.Element {
             <span className="dot" />
             Trade XAU/USD
           </div>
-          <span className="eyebrow">{Math.round(config.payoutRate * 100)}% payout</span>
+          <span className="eyebrow">×{multiplier.toLocaleString('en-KE')}</span>
         </div>
 
         <div className="card-body">
@@ -121,9 +124,24 @@ export function TradePanel(): JSX.Element {
             </div>
           </div>
 
-          <div className="payout-row">
-            <span className="k">If your prediction is right</span>
-            <span className="v tnum">{ksh(payout)}</span>
+          {/* Proportional outcome, so the panel states the terms rather than a
+              single payout figure: how the move is scaled, the most that can
+              be won, and the most that can be lost. */}
+          <div className="terms">
+            <div className="term">
+              <span className="k">Position size</span>
+              <span className="v tnum">×{multiplier.toLocaleString('en-KE')}</span>
+            </div>
+            <div className="term">
+              <span className="k">Max profit</span>
+              <span className="v tnum up">{ksh(maxProfit)}</span>
+            </div>
+            <div className="term">
+              <span className="k">Closes itself if price moves</span>
+              <span className="v tnum down">
+                {wipeoutMovePct.toFixed(3)}% against you
+              </span>
+            </div>
           </div>
 
           {/* Hidden on phones, where the sticky bar carries these instead so the

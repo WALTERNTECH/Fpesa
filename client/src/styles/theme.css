@@ -674,6 +674,50 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   color: var(--up);
 }
 
+/* Terms of the position: how the move is scaled, the ceiling, and the move
+   that wipes the stake. Stated before the trade rather than after it. */
+.terms {
+  padding: 4px 14px;
+  border-radius: var(--r);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  margin-bottom: 14px;
+}
+.term {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+}
+.term + .term { border-top: 1px solid var(--line); }
+.term .k { font-size: 12px; color: var(--muted); }
+.term .v {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+.term .v.up { color: var(--up); }
+.term .v.down { color: var(--down); }
+
+/* Fraction of the stake the adverse move has consumed. */
+.margin-bar {
+  height: 3px;
+  margin-top: 5px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+.margin-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--down);
+  transition: width 0.2s linear;
+}
+
 .trade-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .trade-btn {
   display: flex;
@@ -749,7 +793,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   font-weight: 700;
   letter-spacing: -0.02em;
 }
-.trade-bar .ticket .dur {
+.trade-bar .ticket .exp {
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.05em;

@@ -14,7 +14,7 @@ import { IconArrowDown, IconArrowUp } from './Icons';
 export function TradeBar(): JSX.Element {
   const {
     user, stake, duration, config, accountMode, balance,
-    tradeBusy, canTrade, submitTrade, openModal,
+    tradeBusy, canTrade, submitTrade, openModal, desk, setAccountMode,
   } = useApp();
 
   if (!user) {
@@ -22,6 +22,22 @@ export function TradeBar(): JSX.Element {
       <div className="trade-bar">
         <button className="btn btn-primary btn-block" onClick={() => openModal('login')}>
           Log in to trade
+        </button>
+      </div>
+    );
+  }
+
+  // The desk closes when the day's payouts run ahead of target and reopens by
+  // itself as the book recovers, so this state comes and goes mid-session.
+  if (accountMode === 'real' && !desk.open) {
+    return (
+      <div className="trade-bar closed">
+        <div className="desk-note">
+          <strong>Live trading paused</strong>
+          <span>Reopens automatically · demo still open</span>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={() => setAccountMode('demo')}>
+          Demo
         </button>
       </div>
     );

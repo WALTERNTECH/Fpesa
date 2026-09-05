@@ -5,7 +5,15 @@ export type ServerMessage =
   | { type: 'leaderboard'; rows: unknown[] }
   | { type: 'trade'; trade: unknown; balance: number }
   | { type: 'balance'; demoBalance?: number; realBalance?: number }
-  | { type: 'presence'; online: number };
+  | { type: 'presence'; online: number }
+  | {
+      type: 'desk';
+      open: boolean;
+      reason: string | null;
+      ratio: number;
+      cap: number;
+      reopenAt: number;
+    };
 
 type Handler = (msg: ServerMessage) => void;
 type StatusHandler = (connected: boolean) => void;

@@ -12,6 +12,7 @@ import { priceFeed } from './services/prices.js';
 import { tradingEngine } from './services/trading.js';
 import { primeNews } from './services/news.js';
 import { startReconciliation } from './services/wallet.js';
+import { exposureGuard } from './services/exposure.js';
 import { authRouter } from './routes/auth.routes.js';
 import { marketRouter } from './routes/market.routes.js';
 import { tradeRouter } from './routes/trade.routes.js';
@@ -123,6 +124,7 @@ async function main(): Promise<void> {
   await tradingEngine.start();
   primeNews();
   startReconciliation();
+  exposureGuard.start();
 
   server.listen(env.port, () => {
     console.log('[fpesa] listening on port ' + env.port + ' (' + env.nodeEnv + ')');
@@ -131,6 +133,7 @@ async function main(): Promise<void> {
   const shutdown = (signal: string): void => {
     console.log('[fpesa] ' + signal + ' received, shutting down');
     tradingEngine.stop();
+    exposureGuard.stop();
     priceFeed.stop();
     hub.stop();
     server.close(() => process.exit(0));

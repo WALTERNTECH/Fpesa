@@ -17,6 +17,7 @@ import type {
   Quote,
   Trade,
   User,
+  DeskState,
 } from '../lib/types';
 
 export type Toast = {
@@ -57,6 +58,7 @@ type AppValue = {
   setTradeError: (message: string | null) => void;
   stakeIssue: string | null;
   canTrade: boolean;
+  desk: DeskState;
   submitTrade: (direction: Direction) => Promise<void>;
 
   modal: ModalKind;
@@ -86,6 +88,7 @@ const DEFAULT_CONFIG: PlatformConfig = {
   multipliers: { '5': 2000, '10': 1400, '15': 1150, '30': 800, '60': 575 },
   maxProfitMultiple: 3,
   houseEdge: 0.08,
+  desk: { open: true, reason: null, ratio: 0, cap: 0.2, reopenAt: 0.16 },
   minDeposit: 50,
   minWithdrawal: 100,
   supportTelegram: 'https://t.me/KRYPTONinv',
@@ -124,6 +127,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
   const [duration, setDuration] = useState<number>(10);
   const [tradeBusy, setTradeBusy] = useState<Direction | null>(null);
   const [tradeError, setTradeError] = useState<string | null>(null);
+  const [desk, setDesk] = useState<DeskState>(DEFAULT_CONFIG.desk);
 
   const lastPrice = useRef(0);
   const toastId = useRef(0);
@@ -157,6 +161,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
 
       if (cfg.status === 'fulfilled') {
         setConfig(cfg.value);
+        if (cfg.value.desk) setDesk(cfg.value.desk);
         setStake(String(cfg.value.minStake));
         if (cfg.value.durations.includes(10)) setDuration(10);
         else if (cfg.value.durations[0]) setDuration(cfg.value.durations[0]);
@@ -212,6 +217,18 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
           if (flashTimer.current) window.clearTimeout(flashTimer.current);
           flashTimer.current = window.setTimeout(() => setTickDir(null), 450);
         }
+        return;
+      }
+      if (msg.type === 'desk') {
+        // The desk reopens on its own as the book recovers, so reflect it live
+        // rather than making the trader discover it by tapping Buy.
+        setDesk({
+          open: msg.open,
+          reason: msg.reason,
+          ratio: msg.ratio,
+          cap: msg.cap,
+          reopenAt: msg.reopenAt,
+        });
         return;
       }
       if (msg.type === 'presence') {
@@ -443,6 +460,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       stakeIssue,
       canTrade,
       submitTrade,
+      desk,
       modal,
       openModal,
       closeModal,
@@ -457,7 +475,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
     [
       ready, config, user, quote, price, tickDir, connected, online, accountMode,
       balance, openTrades, stake, duration, tradeBusy, tradeError, stakeIssue,
-      canTrade, submitTrade, modal, openModal, closeModal, login, register,
+      canTrade, submitTrade, desk, modal, openModal, closeModal, login, register,
       logout, refreshUser, resetDemo, toasts, pushToast,
     ]
   );

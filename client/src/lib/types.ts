@@ -96,6 +96,14 @@ export type Transaction = {
   updatedAt: string;
 };
 
+export type DeskState = {
+  open: boolean;
+  reason: string | null;
+  ratio: number;
+  cap: number;
+  reopenAt: number;
+};
+
 export type PlatformConfig = {
   minStake: number;
   maxStake: number;
@@ -104,6 +112,7 @@ export type PlatformConfig = {
   multipliers: Record<string, number>;
   maxProfitMultiple: number;
   houseEdge: number;
+  desk: DeskState;
   minDeposit: number;
   minWithdrawal: number;
   supportTelegram: string;

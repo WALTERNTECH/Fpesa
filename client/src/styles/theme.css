@@ -807,6 +807,10 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   min-height: 52px;
   font-size: 15px;
 }
+.trade-bar.closed { align-items: center; gap: 12px; }
+.desk-note { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.desk-note strong { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.desk-note span { font-size: 11.5px; color: var(--muted); }
 
 /* Keep the fixed bar from covering the last of the page. */
 .footer { padding-bottom: calc(88px + var(--safe-b)); }

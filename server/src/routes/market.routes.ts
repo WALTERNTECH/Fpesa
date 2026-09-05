@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { priceFeed, TIMEFRAMES, type Timeframe } from '../services/prices.js';
 import { getNews } from '../services/news.js';
 import { ALLOWED_DURATIONS, multiplierFor } from '../services/trading.js';
+import { exposureGuard } from '../services/exposure.js';
 import { env } from '../env.js';
 
 export const marketRouter = Router();
@@ -36,6 +37,10 @@ marketRouter.get('/news', async (_req, res) => {
 
 marketRouter.get('/config', (_req, res) => {
   res.json({
+    // Included so a client loading while the desk is shut knows immediately,
+    // rather than finding out by having a tap rejected. Changes after load
+    // arrive over the socket as a "desk" message.
+    desk: exposureGuard.state(),
     minStake: env.minStake,
     maxStake: env.maxStake,
     payoutRate: env.payoutRate,

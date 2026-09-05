@@ -8,7 +8,7 @@ export function TradePanel(): JSX.Element {
   const {
     user, config, accountMode, setAccountMode, balance, openModal,
     stake, setStake, duration, setDuration,
-    tradeBusy, tradeError, setTradeError, stakeIssue, canTrade, submitTrade,
+    tradeBusy, tradeError, setTradeError, stakeIssue, canTrade, submitTrade, desk,
   } = useApp();
 
   const stakeAmount = Number(stake);
@@ -31,6 +31,8 @@ export function TradePanel(): JSX.Element {
       .slice(0, 4);
   }, [config.minStake, config.maxStake]);
 
+  // Real trading is gated while the book is over its daily payout target.
+  const deskClosed = accountMode === 'real' && !desk.open;
   const inlineError = tradeError ?? stakeIssue;
 
   return (
@@ -159,7 +161,7 @@ export function TradePanel(): JSX.Element {
           <div className="trade-actions">
             <button
               className="trade-btn buy"
-              disabled={tradeBusy !== null || (Boolean(user) && !canTrade)}
+              disabled={tradeBusy !== null || deskClosed || (Boolean(user) && !canTrade)}
               onClick={() => void submitTrade('BUY')}
             >
               <IconArrowUp size={17} />
@@ -168,7 +170,7 @@ export function TradePanel(): JSX.Element {
             </button>
             <button
               className="trade-btn sell"
-              disabled={tradeBusy !== null || (Boolean(user) && !canTrade)}
+              disabled={tradeBusy !== null || deskClosed || (Boolean(user) && !canTrade)}
               onClick={() => void submitTrade('SELL')}
             >
               <IconArrowDown size={17} />
@@ -177,6 +179,11 @@ export function TradePanel(): JSX.Element {
             </button>
           </div>
 
+          {deskClosed && (
+            <div className="panel-error">
+              {desk.reason ?? 'Live trading is paused.'}
+            </div>
+          )}
           {inlineError && <div className="panel-error">{inlineError}</div>}
 
           {!user && (

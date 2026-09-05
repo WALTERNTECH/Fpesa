@@ -73,6 +73,12 @@ export const env = {
    * that has been won.  0 disables it.
    */
   dailyPayoutCap: num('DAILY_PAYOUT_CAP_RATIO', 0.2),
+  /**
+   * Hysteresis. A desk closed at the cap only reopens once the ratio has
+   * fallen to cap x this factor, so it cannot flicker open and shut on every
+   * deposit and every winning trade around the threshold.
+   */
+  dailyPayoutReopenFactor: num('DAILY_PAYOUT_REOPEN_FACTOR', 0.8),
   minStake: num('TRADE_MIN_STAKE', 50),
   maxStake: num('TRADE_MAX_STAKE', 20000),
   demoStartingBalance: num('DEMO_STARTING_BALANCE', 10000),

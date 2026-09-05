@@ -19,6 +19,10 @@ export function TradePanel(): JSX.Element {
   // The move that would wipe the stake out, shown as a percentage because the
   // absolute price level depends on which side the trader takes.
   const wipeoutMovePct = useMemo(() => (1 / multiplier) * 100, [multiplier]);
+  // What the spread costs on this ticket, in shillings, stated up front.
+  const spreadCost = Number.isFinite(stakeAmount)
+    ? stakeAmount * config.houseEdge
+    : 0;
 
   const quickAmounts = useMemo(() => {
     const options = [config.minStake, 200, 500, 1000, 5000, config.maxStake];
@@ -140,6 +144,12 @@ export function TradePanel(): JSX.Element {
               <span className="k">Closes itself if price moves</span>
               <span className="v tnum down">
                 {wipeoutMovePct.toFixed(3)}% against you
+              </span>
+            </div>
+            <div className="term">
+              <span className="k">Spread (cost to open)</span>
+              <span className="v tnum">
+                {ksh(spreadCost)} · {(config.houseEdge * 100).toFixed(1)}%
               </span>
             </div>
           </div>

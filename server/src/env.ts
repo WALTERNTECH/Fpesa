@@ -55,6 +55,24 @@ export const env = {
   multipliers: str('TRADE_MULTIPLIERS', '5:2000,10:1400,15:1150,30:800,60:575'),
   /** Profit ceiling as a multiple of stake. Caps the operator's liability. */
   maxProfitMultiple: num('TRADE_MAX_PROFIT_MULTIPLE', 3),
+  /**
+   * House edge per trade, as a fraction of stake — the same idea as a casino's
+   * RTP or a broker's spread. It is applied by marking the entry price against
+   * the trader by edge/multiplier, so the expected cost is exactly this share
+   * of the stake at every duration.
+   *
+   * This, not any per-user selection, is what sets long-run retention:
+   * remaining = (1 - edge) ^ trades. At 0.08 a deposit is down to ~19% after
+   * 20 trades, i.e. about 80% retained. Raise it to retain faster.
+   */
+  houseEdge: num('TRADE_HOUSE_EDGE', 0.08),
+  /**
+   * Hard backstop on the day's book. Once net shillings paid to traders reach
+   * this share of the day's deposits, the desk stops opening NEW real
+   * positions. It never alters an open position and never withholds a payout
+   * that has been won.  0 disables it.
+   */
+  dailyPayoutCap: num('DAILY_PAYOUT_CAP_RATIO', 0.2),
   minStake: num('TRADE_MIN_STAKE', 50),
   maxStake: num('TRADE_MAX_STAKE', 20000),
   demoStartingBalance: num('DEMO_STARTING_BALANCE', 10000),

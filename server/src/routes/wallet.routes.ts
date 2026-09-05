@@ -3,6 +3,8 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { db } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
+import { env } from '../env.js';
+import { exposureGuard } from '../services/exposure.js';
 import {
   WalletError,
   startDeposit,
@@ -103,4 +105,22 @@ walletRouter.get('/transactions/:id', requireAuth, async (req, res) => {
 
 walletRouter.get('/balance', requireAuth, (req, res) => {
   res.json({ demoBalance: req.user!.demoBalance, realBalance: req.user!.realBalance });
+});
+
+/**
+ * The day's book: what came in, what went out, and where that sits against the
+ * daily payout target. Operator view — admin accounts only.
+ */
+walletRouter.get('/book', requireAuth, async (req, res) => {
+  if (!req.user!.isAdmin) {
+    res.status(403).json({ error: 'FORBIDDEN', message: 'Admins only.' });
+    return;
+  }
+  const day = await exposureGuard.read(0);
+  res.json({
+    ...day,
+    target: env.dailyPayoutCap,
+    houseEdge: env.houseEdge,
+    deskOpen: env.dailyPayoutCap <= 0 || day.payoutRatio < env.dailyPayoutCap,
+  });
 });

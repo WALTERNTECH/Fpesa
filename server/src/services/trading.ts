@@ -1,6 +1,7 @@
 import { env } from '../env.js';
 import { db, pgErrorCode } from '../lib/db.js';
 import { priceFeed, SYMBOL } from './prices.js';
+import { exposureGuard } from './exposure.js';
 import { hub } from '../realtime/hub.js';
 
 export type TradeRow = {
@@ -95,6 +96,25 @@ const MULTIPLIERS: Map<number, number> = (() => {
 
 export function multiplierFor(durationSec: number): number {
   return MULTIPLIERS.get(durationSec) ?? 1000;
+}
+
+/**
+ * Marks the entry price against the trader so that a position opened and
+ * closed with no price movement costs exactly `houseEdge` of the stake.
+ *
+ * profit = stake x M x (exit - entry)/entry, so an entry offset of edge/M
+ * produces a profit of -stake x edge at a flat market. Dividing by the
+ * multiplier is what keeps the edge identical across durations even though
+ * the multipliers differ.
+ */
+export function applySpread(
+  mid: number,
+  direction: 'BUY' | 'SELL',
+  multiplier: number
+): number {
+  const offset = env.houseEdge / multiplier;
+  const sign = direction === 'BUY' ? 1 : -1;
+  return Math.round(mid * (1 + sign * offset) * 100) / 100;
 }
 
 /**
@@ -283,10 +303,23 @@ class TradingEngine {
       );
     }
 
+    // The desk stops taking new risk once the day's disbursement target is
+    // met. Open positions are unaffected and demo is never gated.
+    if (mode === 'real') {
+      const allowed = await exposureGuard.allowRealTrade();
+      if (!allowed.ok) {
+        throw new TradeError('DESK_CLOSED', allowed.reason, 503);
+      }
+    }
+
     // The entry price is whatever the server's feed says right now — never a
     // value supplied by the browser.
-    const entry = priceFeed.current().price;
+    const mid = priceFeed.current().price;
     const multiplier = multiplierFor(durationSec);
+    // House edge, applied the way a broker applies a spread: the entry is
+    // marked against the trader by edge/multiplier, so the expected cost is
+    // exactly env.houseEdge of the stake, identically at every duration.
+    const entry = applySpread(mid, direction, multiplier);
     const { stopOut, takeProfit } = exitLevels(
       entry,
       direction,

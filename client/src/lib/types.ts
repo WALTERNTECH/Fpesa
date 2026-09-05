@@ -103,6 +103,7 @@ export type PlatformConfig = {
   durations: number[];
   multipliers: Record<string, number>;
   maxProfitMultiple: number;
+  houseEdge: number;
   minDeposit: number;
   minWithdrawal: number;
   supportTelegram: string;

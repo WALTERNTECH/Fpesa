@@ -44,6 +44,9 @@ marketRouter.get('/config', (_req, res) => {
       ALLOWED_DURATIONS.map((d) => [String(d), multiplierFor(d)])
     ),
     maxProfitMultiple: env.maxProfitMultiple,
+    // Disclosed, not buried: the trader can see the cost of opening a position
+    // before they open one, the same way a broker publishes its spread.
+    houseEdge: env.houseEdge,
     minDeposit: env.minDeposit,
     minWithdrawal: env.minWithdrawal,
     supportTelegram: env.supportTelegram,

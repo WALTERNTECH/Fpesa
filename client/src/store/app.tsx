@@ -85,6 +85,7 @@ const DEFAULT_CONFIG: PlatformConfig = {
   durations: [5, 10, 15, 30, 60],
   multipliers: { '5': 2000, '10': 1400, '15': 1150, '30': 800, '60': 575 },
   maxProfitMultiple: 3,
+  houseEdge: 0.08,
   minDeposit: 50,
   minWithdrawal: 100,
   supportTelegram: 'https://t.me/KRYPTONinv',

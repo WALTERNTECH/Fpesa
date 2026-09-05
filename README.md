@@ -108,6 +108,44 @@ already bounded by the stake.
 
 ---
 
+## House margin, and how retention actually works
+
+Margin comes from one place: `TRADE_HOUSE_EDGE`. The entry price is marked
+against the trader by `edge / multiplier`, so opening and closing at an
+unchanged market costs exactly that fraction of the stake — identically at
+every duration, because dividing by the multiplier cancels the difference
+between them. This is a spread, the same mechanism every CFD broker uses, and
+it is disclosed in the trade panel before the position is opened.
+
+Retention follows from it directly, with no per-user selection anywhere:
+
+```
+remaining after N trades = (1 - edge) ^ N
+```
+
+| Edge | After 10 trades | After 20 | After 30 |
+| --- | --- | --- | --- |
+| 3% (Aviator's ~97% RTP) | 74% | 54% | 40% |
+| 5% | 60% | 36% | 21% |
+| **8% (default)** | 43% | **19%** | 8% |
+| 10% | 35% | 12% | 4% |
+
+So the default reaches roughly 80% retained after about 20 trades. Raise the
+edge to get there faster; lower it to compete on price. This is the only knob
+that should ever be reached for to change the take.
+
+`DAILY_PAYOUT_CAP_RATIO` (default 0.2) is a hard backstop on top: once net
+shillings paid to traders reach that share of the day's deposits, the desk
+stops opening **new** real positions and says so. It is a book control, not an
+outcome control — it never alters a position already open, and it never
+withholds a payout that has been won. `GET /api/wallet/book` (admin only)
+shows the day's deposits, withdrawals, net paid out and the current ratio.
+
+Individual outcomes are never selected, weighted or assigned. Every position
+settles on the price, and the same edge applies to everyone.
+
+---
+
 ## Money movement
 
 Deposits and withdrawals both use the phone number the account was registered

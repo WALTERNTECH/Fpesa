@@ -79,6 +79,13 @@ export const env = {
    * deposit and every winning trade around the threshold.
    */
   dailyPayoutReopenFactor: num('DAILY_PAYOUT_REOPEN_FACTOR', 0.8),
+  /**
+   * Deposit base the day must reach before the cap can engage at all. Below
+   * this the ratio is small-sample noise: a single lucky trade on one small
+   * deposit would otherwise close the desk, and closing it prevents the very
+   * deposits that would bring the ratio back down.
+   */
+  dailyPayoutMinBase: num('DAILY_PAYOUT_MIN_DEPOSITS', 20000),
   minStake: num('TRADE_MIN_STAKE', 50),
   maxStake: num('TRADE_MAX_STAKE', 20000),
   demoStartingBalance: num('DEMO_STARTING_BALANCE', 10000),

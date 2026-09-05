@@ -102,6 +102,8 @@ export type DeskState = {
   ratio: number;
   cap: number;
   reopenAt: number;
+  minBase: number;
+  armed: boolean;
 };
 
 export type PlatformConfig = {

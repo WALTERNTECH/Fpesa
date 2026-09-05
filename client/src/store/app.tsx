@@ -88,7 +88,7 @@ const DEFAULT_CONFIG: PlatformConfig = {
   multipliers: { '5': 2000, '10': 1400, '15': 1150, '30': 800, '60': 575 },
   maxProfitMultiple: 3,
   houseEdge: 0.08,
-  desk: { open: true, reason: null, ratio: 0, cap: 0.2, reopenAt: 0.16 },
+  desk: { open: true, reason: null, ratio: 0, cap: 0.2, reopenAt: 0.16, minBase: 20000, armed: false },
   minDeposit: 50,
   minWithdrawal: 100,
   supportTelegram: 'https://t.me/KRYPTONinv',
@@ -228,6 +228,8 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
           ratio: msg.ratio,
           cap: msg.cap,
           reopenAt: msg.reopenAt,
+          minBase: msg.minBase,
+          armed: msg.armed,
         });
         return;
       }

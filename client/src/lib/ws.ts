@@ -13,6 +13,8 @@ export type ServerMessage =
       ratio: number;
       cap: number;
       reopenAt: number;
+      minBase: number;
+      armed: boolean;
     };
 
 type Handler = (msg: ServerMessage) => void;

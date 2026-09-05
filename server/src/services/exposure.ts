@@ -17,6 +17,8 @@ export type DeskState = {
   ratio: number;
   cap: number;
   reopenAt: number;
+  minBase: number;
+  armed: boolean;
 };
 
 const EMPTY: DailyExposure = {
@@ -97,7 +99,16 @@ class ExposureGuard {
    */
   private evaluate(day: DailyExposure): boolean {
     if (env.dailyPayoutCap <= 0) return true;
-    if (day.deposits <= 0) return true;
+
+    // A ratio over a handful of deposits is noise, not a trend. Early in the
+    // day one lucky trader on a KSh 500 deposit can put the ratio over 20% and
+    // shut the whole platform before breakfast, then hold it shut because the
+    // denominator is not growing — nobody can trade to grow it. The cap only
+    // engages once there is enough of a base for the ratio to mean something.
+    if (day.deposits < env.dailyPayoutMinBase) {
+      this.open = true;
+      return true;
+    }
 
     if (this.open) {
       if (day.payoutRatio >= env.dailyPayoutCap) this.open = false;
@@ -114,6 +125,9 @@ class ExposureGuard {
       ratio: this.cached.payoutRatio,
       cap: env.dailyPayoutCap,
       reopenAt: this.reopenLevel(),
+      minBase: env.dailyPayoutMinBase,
+      // Whether the day has enough deposits for the cap to mean anything yet.
+      armed: this.cached.deposits >= env.dailyPayoutMinBase,
     };
   }
 

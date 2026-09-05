@@ -3,6 +3,7 @@ import { Header } from './components/Header';
 import { NewsTicker } from './components/NewsTicker';
 import { PriceChart } from './components/PriceChart';
 import { TradePanel } from './components/TradePanel';
+import { TradeBar } from './components/TradeBar';
 import { SocialTabs } from './components/SocialTabs';
 import { SupportButton } from './components/SupportButton';
 import { InstallPrompt } from './components/InstallPrompt';
@@ -28,6 +29,7 @@ export function App(): JSX.Element {
       </main>
 
       <Footer />
+      <TradeBar />
       <SupportButton />
       <InstallPrompt />
       <Toasts />

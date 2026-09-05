@@ -23,9 +23,9 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
-      - key: PALPLUSS_API_KEY
+      - key: INTASEND_SECRET_KEY
         sync: false
-      - key: PALPLUSS_WEBHOOK_TOKEN
+      - key: INTASEND_WEBHOOK_TOKEN
         sync: false
       - key: PUBLIC_URL
         sync: false

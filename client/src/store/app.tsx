@@ -44,7 +44,20 @@ type AppValue = {
   balance: number;
 
   openTrades: Trade[];
-  placeTrade: (direction: Direction, stake: number, durationSec: number) => Promise<void>;
+
+  /* The trade ticket lives here rather than in the panel, because on a phone
+     the Buy/Sell buttons render in a bar pinned beside the chart while the
+     amount and duration inputs sit further down. Both read the same ticket. */
+  stake: string;
+  setStake: (value: string) => void;
+  duration: number;
+  setDuration: (seconds: number) => void;
+  tradeBusy: Direction | null;
+  tradeError: string | null;
+  setTradeError: (message: string | null) => void;
+  stakeIssue: string | null;
+  canTrade: boolean;
+  submitTrade: (direction: Direction) => Promise<void>;
 
   modal: ModalKind;
   openModal: (kind: ModalKind) => void;
@@ -104,6 +117,10 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
   const [openTrades, setOpenTrades] = useState<Trade[]>([]);
   const [modal, setModal] = useState<ModalKind>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [stake, setStake] = useState<string>(String(DEFAULT_CONFIG.minStake));
+  const [duration, setDuration] = useState<number>(10);
+  const [tradeBusy, setTradeBusy] = useState<Direction | null>(null);
+  const [tradeError, setTradeError] = useState<string | null>(null);
 
   const lastPrice = useRef(0);
   const toastId = useRef(0);
@@ -135,7 +152,12 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       ]);
       if (cancelled) return;
 
-      if (cfg.status === 'fulfilled') setConfig(cfg.value);
+      if (cfg.status === 'fulfilled') {
+        setConfig(cfg.value);
+        setStake(String(cfg.value.minStake));
+        if (cfg.value.durations.includes(10)) setDuration(10);
+        else if (cfg.value.durations[0]) setDuration(cfg.value.durations[0]);
+      }
       if (me.status === 'fulfilled' && me.value.user) {
         setUser(me.value.user);
         // A returning trader with real funds lands on their live account.
@@ -320,29 +342,69 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
     pushToast({ tone: 'info', icon: '↺', title: 'Demo balance reset' });
   }, [pushToast]);
 
-  const placeTrade = useCallback(
-    async (direction: Direction, stake: number, durationSec: number) => {
-      const res = await api.post<{ trade: Trade; balance: number }>('/trades', {
-        direction,
-        stake,
-        durationSec,
-        accountMode,
-      });
-      setOpenTrades((prev) => [...prev, res.trade]);
-      setUser((prev) => {
-        if (!prev) return prev;
-        return accountMode === 'demo'
-          ? { ...prev, demoBalance: res.balance }
-          : { ...prev, realBalance: res.balance };
-      });
+  const balance = user ? (accountMode === 'demo' ? user.demoBalance : user.realBalance) : 0;
+
+  // Validated once here so the panel and the sticky bar cannot disagree about
+  // whether the current ticket is placeable.
+  const stakeAmount = Number(stake);
+  const stakeIssue = ((): string | null => {
+    if (stake.trim() === '') return null;
+    if (!Number.isFinite(stakeAmount)) return 'Enter a valid amount.';
+    if (stakeAmount < config.minStake) return 'Minimum trade is KSh ' + config.minStake + '.';
+    if (stakeAmount > config.maxStake) {
+      return 'Maximum trade is KSh ' + config.maxStake.toLocaleString('en-KE') + '.';
+    }
+    if (user && stakeAmount > balance) {
+      return accountMode === 'demo'
+        ? 'Demo balance is too low.'
+        : 'Balance too low — deposit to continue.';
+    }
+    return null;
+  })();
+
+  const canTrade =
+    Number.isFinite(stakeAmount) &&
+    stakeAmount >= config.minStake &&
+    stakeAmount <= config.maxStake &&
+    (!user || stakeAmount <= balance) &&
+    price > 0;
+
+  const submitTrade = useCallback(
+    async (direction: Direction) => {
+      if (!user) {
+        setModal('login');
+        return;
+      }
+      const amount = Number(stake);
+      if (!Number.isFinite(amount) || tradeBusy) return;
+
+      setTradeBusy(direction);
+      setTradeError(null);
+      try {
+        const res = await api.post<{ trade: Trade; balance: number }>('/trades', {
+          direction,
+          stake: amount,
+          durationSec: duration,
+          accountMode,
+        });
+        setOpenTrades((prev) => [...prev, res.trade]);
+        setUser((prev) => {
+          if (!prev) return prev;
+          return accountMode === 'demo'
+            ? { ...prev, demoBalance: res.balance }
+            : { ...prev, realBalance: res.balance };
+        });
+      } catch (err) {
+        setTradeError(err instanceof ApiError ? err.message : 'Could not place the trade.');
+      } finally {
+        setTradeBusy(null);
+      }
     },
-    [accountMode]
+    [user, stake, duration, accountMode, tradeBusy]
   );
 
   const openModal = useCallback((kind: ModalKind) => setModal(kind), []);
   const closeModal = useCallback(() => setModal(null), []);
-
-  const balance = user ? (accountMode === 'demo' ? user.demoBalance : user.realBalance) : 0;
 
   const value = useMemo<AppValue>(
     () => ({
@@ -358,7 +420,16 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       setAccountMode,
       balance,
       openTrades,
-      placeTrade,
+      stake,
+      setStake,
+      duration,
+      setDuration,
+      tradeBusy,
+      tradeError,
+      setTradeError,
+      stakeIssue,
+      canTrade,
+      submitTrade,
       modal,
       openModal,
       closeModal,
@@ -372,8 +443,9 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
     }),
     [
       ready, config, user, quote, price, tickDir, connected, online, accountMode,
-      balance, openTrades, placeTrade, modal, openModal, closeModal, login,
-      register, logout, refreshUser, resetDemo, toasts, pushToast,
+      balance, openTrades, stake, duration, tradeBusy, tradeError, stakeIssue,
+      canTrade, submitTrade, modal, openModal, closeModal, login, register,
+      logout, refreshUser, resetDemo, toasts, pushToast,
     ]
   );
 

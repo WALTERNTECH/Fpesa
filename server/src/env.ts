@@ -27,12 +27,14 @@ export const env = {
   supabaseServiceKey: str('SUPABASE_SERVICE_ROLE_KEY'),
 
   jwtSecret: str('JWT_SECRET'),
-  webhookToken: str('PALPLUSS_WEBHOOK_TOKEN'),
+  webhookToken: str('INTASEND_WEBHOOK_TOKEN') || str('PALPLUSS_WEBHOOK_TOKEN'),
 
-  palpluss: {
-    apiKey: str('PALPLUSS_API_KEY'),
-    baseUrl: str('PALPLUSS_BASE_URL', 'https://api.palpluss.com/v1').replace(/\/+$/, ''),
-    channelId: str('PALPLUSS_CHANNEL_ID'),
+  intasend: {
+    secretKey: str('INTASEND_SECRET_KEY'),
+    baseUrl: str('INTASEND_BASE_URL', 'https://payment.intasend.com').replace(/\/+$/, ''),
+    // IntaSend does not sign callbacks; it echoes a challenge string that is
+    // configured alongside the webhook URL in their dashboard.
+    webhookChallenge: str('INTASEND_WEBHOOK_CHALLENGE'),
   },
   paymentsMock: bool('PAYMENTS_MOCK', false),
 
@@ -75,10 +77,17 @@ export function assertEnv(): void {
       'deposits without taking payment. Unset it, or run with NODE_ENV=development.'
     );
   }
-  if (!env.paymentsMock && !env.palpluss.apiKey) {
+  if (!env.paymentsMock && !env.intasend.secretKey) {
     console.warn(
-      '[fpesa] PALPLUSS_API_KEY is not set — deposits and withdrawals will be ' +
+      '[fpesa] INTASEND_SECRET_KEY is not set — deposits and withdrawals will be ' +
       'rejected. Set PAYMENTS_MOCK=true to exercise the flow without live keys.'
+    );
+  }
+  if (!env.paymentsMock && env.intasend.secretKey && !env.intasend.webhookChallenge) {
+    console.warn(
+      '[fpesa] INTASEND_WEBHOOK_CHALLENGE is not set — provider callbacks cannot ' +
+      'be authenticated, so they will be ignored and settlement will fall back ' +
+      'to the reconciliation sweep.'
     );
   }
 }

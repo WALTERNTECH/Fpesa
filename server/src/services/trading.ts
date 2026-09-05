@@ -145,6 +145,17 @@ class TradingEngine {
       throw new TradeError('INVALID_DURATION', 'Choose one of the offered trade durations.');
     }
 
+    // Refuse to open a position until the feed has a real quote behind it.
+    // Straight after a cold start the price is still the fallback seed, and a
+    // trade opened there would settle against a number we invented.
+    if (!priceFeed.isReady()) {
+      throw new TradeError(
+        'FEED_NOT_READY',
+        'Market feed is still connecting. Try again in a few seconds.',
+        503
+      );
+    }
+
     // The entry price is whatever the server's feed says right now — never a
     // value supplied by the browser.
     const entry = priceFeed.current().price;

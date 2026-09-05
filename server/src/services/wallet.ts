@@ -5,12 +5,13 @@ import { hub } from '../realtime/hub.js';
 import { maskUsername } from './trading.js';
 import {
   PaymentError,
-  getTransaction,
+  getStatus,
   initiateB2CPayout,
   initiateStkPush,
   setMockSettlementHandler,
-  type PalplussStatus,
-} from './palpluss.js';
+  type ProviderStatus,
+  type TxKind,
+} from './intasend.js';
 
 export type TxRow = {
   id: string;
@@ -73,7 +74,7 @@ function callbackUrl(): string {
       503
     );
   }
-  return env.publicUrl + '/api/webhooks/palpluss/' + env.webhookToken;
+  return env.publicUrl + '/api/webhooks/intasend/' + env.webhookToken;
 }
 
 const MAX_DEPOSIT = 250_000;
@@ -100,7 +101,9 @@ export async function startDeposit(user: {
   }
 
   const ref = reference('D');
-  const url = callbackUrl();
+  // Verify the callback route is configured before charging anyone, even
+  // though IntaSend collections carry no per-request callback URL.
+  callbackUrl();
 
   const { data, error } = await db
     .from('transactions')
@@ -126,14 +129,12 @@ export async function startDeposit(user: {
       phone: user.phone,
       amount: value,
       reference: ref,
-      description: 'Fpesa deposit',
-      callbackUrl: url,
     });
     await db
       .from('transactions')
-      .update({ provider_txn_id: provider.transactionId, updated_at: new Date().toISOString() })
+      .update({ provider_txn_id: provider.providerId, updated_at: new Date().toISOString() })
       .eq('id', row.id);
-    return toPublicTx({ ...row, provider_txn_id: provider.transactionId });
+    return toPublicTx({ ...row, provider_txn_id: provider.providerId });
   } catch (err) {
     // The STK request never reached M-Pesa, so close the record out rather
     // than leaving a phantom PENDING deposit on the user's history.
@@ -154,6 +155,7 @@ export async function startDeposit(user: {
 export async function startWithdrawal(user: {
   id: string;
   phone: string;
+  username: string;
 }, amount: number): Promise<PublicTx> {
   const value = Math.round(amount);
   if (!Number.isFinite(value) || value < env.minWithdrawal) {
@@ -206,14 +208,15 @@ export async function startWithdrawal(user: {
       reference: ref,
       description: 'Fpesa withdrawal',
       callbackUrl: url,
+      name: user.username,
     });
     await db
       .from('transactions')
-      .update({ provider_txn_id: provider.transactionId, updated_at: new Date().toISOString() })
+      .update({ provider_txn_id: provider.providerId, updated_at: new Date().toISOString() })
       .eq('id', row.id);
 
     hub.toUser(user.id, { type: 'balance', realBalance: Number(reserved.balance) });
-    return toPublicTx({ ...row, provider_txn_id: provider.transactionId });
+    return toPublicTx({ ...row, provider_txn_id: provider.providerId });
   } catch (err) {
     // Payout never left our side — hand the money straight back.
     await finaliseTransaction(ref, 'FAILED', null, null, 'Payout could not be sent');
@@ -225,7 +228,7 @@ export async function startWithdrawal(user: {
 // ------------------------------------------------------- settle either kind
 export async function finaliseTransaction(
   ref: string,
-  status: PalplussStatus,
+  status: ProviderStatus,
   receipt: string | null,
   resultCode: string | null,
   resultDesc: string | null,
@@ -293,13 +296,14 @@ export async function finaliseTransaction(
 
 /**
  * Applies a provider callback. The webhook body is treated purely as a hint —
- * the real status is read back from Palpluss before any balance changes, so a
- * forged callback cannot credit an account.
+ * the real status is read back from IntaSend before any balance changes, so a
+ * forged callback cannot credit an account even if the challenge string leaks.
  */
 export async function handleProviderCallback(payload: {
+  kind: TxKind;
   reference: string;
   providerId: string | null;
-  status: PalplussStatus;
+  status: ProviderStatus;
   receipt: string | null;
   resultCode: string | null;
   resultDesc: string | null;
@@ -310,14 +314,15 @@ export async function handleProviderCallback(payload: {
   let resultDesc = payload.resultDesc;
 
   if (payload.providerId && !env.paymentsMock) {
-    const confirmed = await getTransaction(payload.providerId);
+    const confirmed = await getStatus(payload.kind, payload.providerId);
     if (confirmed) {
       status = confirmed.status;
-      receipt = confirmed.mpesaReceipt ?? receipt;
+      receipt = confirmed.receipt ?? receipt;
       resultCode = confirmed.resultCode ?? resultCode;
-      resultDesc = confirmed.resultDescription ?? resultDesc;
+      resultDesc = confirmed.resultDesc ?? resultDesc;
     } else if (status === 'SUCCESS') {
       // Could not verify a claimed success — do not credit on the webhook alone.
+      // The reconciliation sweep will settle it once the provider answers.
       console.warn('[wallet] unverified SUCCESS callback for ' + payload.reference + '; deferring');
       return;
     }
@@ -335,7 +340,7 @@ export async function handleProviderCallback(payload: {
 
 /**
  * Webhooks get lost. Every minute, any deposit or payout still pending after
- * two minutes is reconciled directly against Palpluss, and anything still
+ * two minutes is reconciled directly against IntaSend, and anything still
  * unresolved after 15 minutes is expired (refunding reserved payouts).
  */
 export function startReconciliation(): void {
@@ -352,17 +357,18 @@ export function startReconciliation(): void {
       reference: string;
       provider_txn_id: string | null;
       created_at: string;
+      kind: TxKind;
     }>) {
       const ageMs = Date.now() - Date.parse(row.created_at);
       if (row.provider_txn_id) {
-        const confirmed = await getTransaction(row.provider_txn_id);
+        const confirmed = await getStatus(row.kind, row.provider_txn_id);
         if (confirmed && confirmed.status !== 'PENDING') {
           await finaliseTransaction(
             row.reference,
             confirmed.status,
-            confirmed.mpesaReceipt,
+            confirmed.receipt,
             confirmed.resultCode,
-            confirmed.resultDescription
+            confirmed.resultDesc
           );
           continue;
         }
@@ -377,7 +383,7 @@ export function startReconciliation(): void {
   void sweep().catch(() => undefined);
 
   // In mock mode the simulator drives settlement directly.
-  setMockSettlementHandler((ref, status, receipt) => {
+  setMockSettlementHandler((_kind, ref, status, receipt) => {
     void finaliseTransaction(ref, status, receipt, '0', 'Mock settlement');
   });
 }

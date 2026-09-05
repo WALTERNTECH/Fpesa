@@ -6,6 +6,13 @@
    ========================================================================== */
 
 :root {
+  /* Fpesa is a single-theme light product. Declaring the scheme is what stops
+     Samsung Internet's dark mode and Chrome for Android's "Force dark" from
+     auto-inverting the page to a black background on phones whose OS theme is
+     dark — those engines skip any document that states its scheme. Without it
+     the palette below is repainted by the browser and the app turns black. */
+  color-scheme: light;
+
   --white: #ffffff;
   --surface: #f7f9fc;
   --surface-2: #eef3fb;
@@ -62,6 +69,15 @@
 }
 html {
   -webkit-text-size-adjust: 100%;
+  color-scheme: light;
+  background: #f7f9fc;
+}
+/* Re-assert the light palette when the device theme is dark. The tokens are
+   defined on :root unconditionally, so this only has to pin the two painted
+   surfaces that a forced-dark pass would otherwise darken first. */
+@media (prefers-color-scheme: dark) {
+  html { background: #f7f9fc; }
+  body { background: #f7f9fc; color: #0a0d14; }
 }
 body {
   margin: 0;
@@ -689,6 +705,70 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   .trade-btn:hover:not(:disabled) { filter: brightness(1.06); }
 }
 
+/* ---------------------------------------------------------- sticky ticket */
+/* On a phone the panel's own Buy/Sell pair is hidden and this bar carries the
+   actions instead, so the chart stays visible while the trade is placed. */
+.trade-actions { display: none; }
+.trade-login { margin-top: 0; }
+
+.trade-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 75;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  padding: 9px calc(10px + var(--safe-r)) calc(9px + var(--safe-b)) calc(10px + var(--safe-l));
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -6px 22px -12px rgba(10, 13, 20, 0.28);
+}
+.trade-bar .ticket {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 1px;
+  flex: 0 0 auto;
+  min-width: 76px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--white);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.trade-bar .ticket .amt {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.trade-bar .ticket .dur {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--subtle);
+}
+.trade-bar .trade-btn {
+  flex: 1;
+  flex-direction: row;
+  gap: 7px;
+  min-height: 52px;
+  font-size: 15px;
+}
+
+/* Keep the fixed bar from covering the last of the page. */
+.footer { padding-bottom: calc(88px + var(--safe-b)); }
+.support-fab { bottom: calc(84px + var(--safe-b)); }
+.install-sheet { bottom: calc(80px + var(--safe-b)); }
+
 .panel-error {
   margin-top: 12px;
   padding: 10px 13px;
@@ -1181,6 +1261,13 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   }
   .trade-panel { position: sticky; top: calc(var(--header-h) + var(--gutter)); }
   .chart-canvas { height: 440px; }
+  /* The panel now sits beside the chart, so both are visible at once and the
+     pinned bar is redundant. */
+  .trade-bar { display: none; }
+  .trade-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .trade-login { margin-top: 12px; }
+  .support-fab { bottom: calc(14px + var(--safe-b)); }
+  .install-sheet { bottom: calc(10px + var(--safe-b)); }
   /* Wide enough to show all three floor panels at once, so the tabs go away. */
   .seg { display: none; }
   .floor-panes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gutter); }

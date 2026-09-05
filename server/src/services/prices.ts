@@ -26,6 +26,12 @@ const SIGMA = 0.00009;
  * real quote and absorbs upstream corrections over ~30s instead of jumping.
  */
 const THETA = 0.02;
+/**
+ * Fractional gap at which a correction is applied as a jump rather than a
+ * glide. Real 15-second moves in gold are far under this, so ordinary
+ * corrections still ease in; only genuine dislocations snap.
+ */
+const SNAP_THRESHOLD = 0.005;
 
 /** Box-Muller: one standard normal sample. */
 function gaussian(): number {
@@ -55,7 +61,14 @@ class PriceFeed {
   private dayOpen = 0;
 
   async start(): Promise<void> {
-    const seed = await this.fetchUpstream();
+    // Retry before falling back. Starting on the fallback and correcting later
+    // is the worst case for settlement, so it is worth a few seconds here.
+    let seed: number | null = null;
+    for (let attempt = 0; attempt < 3 && seed === null; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
+      seed = await this.fetchUpstream();
+    }
+
     const fallback = Number(process.env.SIMULATED_BASE_PRICE ?? 2650);
     this.price = seed ?? fallback;
     this.anchor = this.price;
@@ -84,11 +97,27 @@ class PriceFeed {
   // -------------------------------------------------------------- upstream
   private async poll(): Promise<void> {
     const p = await this.fetchUpstream();
-    if (p !== null && Number.isFinite(p) && p > 0) {
-      this.anchor = p;
-      this.anchored = true;
-      this.lastUpstreamAt = Date.now();
+    if (p === null || !Number.isFinite(p) || p <= 0) return;
+
+    this.anchor = p;
+    this.lastUpstreamAt = Date.now();
+
+    // A large gap means we cold-started on the fallback, or the synthetic walk
+    // has drifted badly. Gliding across it would manufacture a one-way trend
+    // that lasts many expiries — every Buy wins while it closes. Snap instead:
+    // one discontinuity is honest, a rideable ramp is not.
+    const gap = Math.abs(p - this.price) / p;
+    if (!this.anchored || gap > SNAP_THRESHOLD) {
+      this.price = p;
+      this.dayOpen = this.anchored ? this.dayOpen : p;
+      this.seedHistory();
     }
+    this.anchored = true;
+  }
+
+  /** True once a real upstream quote has been applied. Trading gates on this. */
+  isReady(): boolean {
+    return this.anchored || env.priceMode !== 'live';
   }
 
   private async fetchUpstream(): Promise<number | null> {

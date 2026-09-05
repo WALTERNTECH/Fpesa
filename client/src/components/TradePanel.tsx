@@ -1,31 +1,20 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useApp } from '../store/app';
-import { ApiError } from '../lib/api';
 import { ksh, durationLabel } from '../lib/format';
 import { OpenPositions } from './OpenPositions';
 import { IconArrowDown, IconArrowUp } from './Icons';
-import type { Direction } from '../lib/types';
 
 export function TradePanel(): JSX.Element {
   const {
-    user, config, accountMode, setAccountMode, balance,
-    placeTrade, openModal, price,
+    user, config, accountMode, setAccountMode, balance, openModal,
+    stake, setStake, duration, setDuration,
+    tradeBusy, tradeError, setTradeError, stakeIssue, canTrade, submitTrade,
   } = useApp();
 
-  const [amount, setAmount] = useState<string>(String(config.minStake));
-  const [duration, setDuration] = useState<number>(config.durations[1] ?? 10);
-  const [busy, setBusy] = useState<Direction | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const stake = Number(amount);
-  const stakeValid =
-    Number.isFinite(stake) && stake >= config.minStake && stake <= config.maxStake;
-  const affordable = !user || stake <= balance;
-  const canTrade = stakeValid && affordable && price > 0;
-
+  const stakeAmount = Number(stake);
   const payout = useMemo(
-    () => (stakeValid ? stake * (1 + config.payoutRate) : 0),
-    [stake, stakeValid, config.payoutRate]
+    () => (Number.isFinite(stakeAmount) ? stakeAmount * (1 + config.payoutRate) : 0),
+    [stakeAmount, config.payoutRate]
   );
 
   const quickAmounts = useMemo(() => {
@@ -35,38 +24,7 @@ export function TradePanel(): JSX.Element {
       .slice(0, 4);
   }, [config.minStake, config.maxStake]);
 
-  const amountError = (): string | null => {
-    if (amount === '') return null;
-    if (!Number.isFinite(stake)) return 'Enter a valid amount.';
-    if (stake < config.minStake) return 'Minimum trade is ' + ksh(config.minStake, true) + '.';
-    if (stake > config.maxStake) return 'Maximum trade is ' + ksh(config.maxStake, true) + '.';
-    if (!affordable) {
-      return accountMode === 'demo'
-        ? 'Demo balance is too low.'
-        : 'Balance too low — deposit to continue.';
-    }
-    return null;
-  };
-
-  const onTrade = async (direction: Direction): Promise<void> => {
-    if (!user) {
-      openModal('register');
-      return;
-    }
-    if (!canTrade || busy) return;
-
-    setBusy(direction);
-    setError(null);
-    try {
-      await placeTrade(direction, stake, duration);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not place the trade.');
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const inlineError = error ?? amountError();
+  const inlineError = tradeError ?? stakeIssue;
 
   return (
     <div className="trade-panel">
@@ -81,10 +39,7 @@ export function TradePanel(): JSX.Element {
 
         <div className="card-body">
           <div className="acct-switch" role="group" aria-label="Account type">
-            <button
-              onClick={() => setAccountMode('demo')}
-              aria-pressed={accountMode === 'demo'}
-            >
+            <button onClick={() => setAccountMode('demo')} aria-pressed={accountMode === 'demo'}>
               Demo
             </button>
             <button
@@ -113,22 +68,18 @@ export function TradePanel(): JSX.Element {
                 {ksh(config.minStake, true)} – {ksh(config.maxStake, true)}
               </span>
             </div>
-            <div
-              className={
-                'amount-input' + (amount !== '' && (!stakeValid || !affordable) ? ' invalid' : '')
-              }
-            >
+            <div className={'amount-input' + (stakeIssue ? ' invalid' : '')}>
               <span className="cur">KSh</span>
               <input
                 type="number"
                 inputMode="numeric"
-                value={amount}
+                value={stake}
                 min={config.minStake}
                 max={config.maxStake}
                 step={10}
                 onChange={(e) => {
-                  setAmount(e.target.value);
-                  setError(null);
+                  setStake(e.target.value);
+                  setTradeError(null);
                 }}
                 aria-label="Trade amount in Kenyan shillings"
               />
@@ -140,8 +91,8 @@ export function TradePanel(): JSX.Element {
                   type="button"
                   className="chip"
                   onClick={() => {
-                    setAmount(String(value));
-                    setError(null);
+                    setStake(String(value));
+                    setTradeError(null);
                   }}
                 >
                   {value >= 1000 ? value / 1000 + 'K' : value}
@@ -175,23 +126,25 @@ export function TradePanel(): JSX.Element {
             <span className="v tnum">{ksh(payout)}</span>
           </div>
 
+          {/* Hidden on phones, where the sticky bar carries these instead so the
+              chart stays on screen while the trade is placed. */}
           <div className="trade-actions">
             <button
               className="trade-btn buy"
-              disabled={busy !== null || (Boolean(user) && !canTrade)}
-              onClick={() => void onTrade('BUY')}
+              disabled={tradeBusy !== null || (Boolean(user) && !canTrade)}
+              onClick={() => void submitTrade('BUY')}
             >
               <IconArrowUp size={17} />
-              {busy === 'BUY' ? 'Placing…' : 'Buy'}
+              {tradeBusy === 'BUY' ? 'Placing…' : 'Buy'}
               <small>Price goes up</small>
             </button>
             <button
               className="trade-btn sell"
-              disabled={busy !== null || (Boolean(user) && !canTrade)}
-              onClick={() => void onTrade('SELL')}
+              disabled={tradeBusy !== null || (Boolean(user) && !canTrade)}
+              onClick={() => void submitTrade('SELL')}
             >
               <IconArrowDown size={17} />
-              {busy === 'SELL' ? 'Placing…' : 'Sell'}
+              {tradeBusy === 'SELL' ? 'Placing…' : 'Sell'}
               <small>Price goes down</small>
             </button>
           </div>
@@ -200,8 +153,7 @@ export function TradePanel(): JSX.Element {
 
           {!user && (
             <button
-              className="btn btn-dark btn-block"
-              style={{ marginTop: 12 }}
+              className="btn btn-dark btn-block trade-login"
               onClick={() => openModal('login')}
             >
               Log in to trade

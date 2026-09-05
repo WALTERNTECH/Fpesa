@@ -6,6 +6,9 @@
          viewport-fit=cover lets the safe-area insets do their job on a notch. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0B4FD8" />
+    <!-- Opts the page out of Android/Samsung forced-dark repainting, which
+         otherwise turns the white background black on dark-themed phones. -->
+    <meta name="color-scheme" content="light" />
     <meta name="description" content="Fpesa — XAU/USD trading with M-Pesa deposits and withdrawals." />
     <title>Fpesa</title>
 
@@ -29,6 +32,7 @@
       /* The boot screen lives in the document head so it renders on the first
          paint — before the bundle, the fonts, or the price feed have arrived. */
       :root {
+        color-scheme: light;
         --boot-blue: #0b4fd8;
         --boot-ink: #0a0d14;
       }

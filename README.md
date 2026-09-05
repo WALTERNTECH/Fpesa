@@ -123,18 +123,34 @@ Retention follows from it directly, with no per-user selection anywhere:
 remaining after N trades = (1 - edge) ^ N
 ```
 
+Read the table as *what a depositor can still withdraw*, so the operator keeps
+the remainder:
+
 | Edge | After 10 trades | After 20 | After 30 |
 | --- | --- | --- | --- |
 | 3% (Aviator's ~97% RTP) | 74% | 54% | 40% |
-| 5% | 60% | 36% | 21% |
-| **8% (default)** | 43% | **19%** | 8% |
+| **6% (default)** | 54% | **29%** | 16% |
+| 8% | 43% | 19% | 8% |
 | 10% | 35% | 12% | 4% |
 
-So the default reaches roughly 80% retained after about 20 trades. Raise the
-edge to get there faster; lower it to compete on price. This is the only knob
-that should ever be reached for to change the take.
+The default is tuned so ~30% of deposits are disbursed and ~70% retained, at an
+assumed 20 trades per depositor. That assumption is the whole game — the same
+edge keeps far less from a trader who stops after five trades, and far more from
+one who makes forty:
 
-`DAILY_PAYOUT_CAP_RATIO` (default 0.2) is a hard backstop on top: once net
+| Avg trades per depositor | Edge for a 30% disbursement |
+| --- | --- |
+| 5 | 21.4% |
+| 10 | 11.3% |
+| 15 | 7.7% |
+| **20** | **5.8%** |
+| 30 | 3.9% |
+
+So `TRADE_HOUSE_EDGE` is the only knob that should ever be reached for to change
+the take, and it should be set against **measured** churn, not a guess. Read the
+real figure from `GET /api/wallet/book` once there is real traffic.
+
+`DAILY_PAYOUT_CAP_RATIO` (default 0.3) is a hard backstop on top: once net
 shillings paid to traders reach that share of the day's deposits, the desk
 stops opening **new** real positions and says so. It is a book control, not an
 outcome control — it never alters a position already open, and it never

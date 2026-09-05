@@ -61,18 +61,21 @@ export const env = {
    * the trader by edge/multiplier, so the expected cost is exactly this share
    * of the stake at every duration.
    *
-   * This, not any per-user selection, is what sets long-run retention:
-   * remaining = (1 - edge) ^ trades. At 0.08 a deposit is down to ~19% after
-   * 20 trades, i.e. about 80% retained. Raise it to retain faster.
+   * This, not any per-user selection, is what sets long-run disbursement:
+   * remaining = (1 - edge) ^ trades. At 0.06 a deposit is down to ~29% after
+   * 20 trades — i.e. ~30% disbursed, 70% retained. Raise it to disburse less.
+   *
+   * Retune against real churn: the 0.06 default assumes ~20 trades per
+   * depositor. Read the real figure from GET /api/wallet/book.
    */
-  houseEdge: num('TRADE_HOUSE_EDGE', 0.08),
+  houseEdge: num('TRADE_HOUSE_EDGE', 0.06),
   /**
    * Hard backstop on the day's book. Once net shillings paid to traders reach
    * this share of the day's deposits, the desk stops opening NEW real
    * positions. It never alters an open position and never withholds a payout
    * that has been won.  0 disables it.
    */
-  dailyPayoutCap: num('DAILY_PAYOUT_CAP_RATIO', 0.2),
+  dailyPayoutCap: num('DAILY_PAYOUT_CAP_RATIO', 0.3),
   /**
    * Hysteresis. A desk closed at the cap only reopens once the ratio has
    * fallen to cap x this factor, so it cannot flicker open and shut on every

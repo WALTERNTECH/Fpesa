@@ -10,6 +10,7 @@ import {
   IconDownload,
   IconLogout,
   IconRefresh,
+  IconChart,
 } from './Icons';
 
 export function Brand(): JSX.Element {
@@ -156,6 +157,23 @@ export function Header(): JSX.Element {
                     <IconRefresh size={15} />
                     Reset demo balance
                   </button>
+
+                  {user.isAdmin && (
+                    <>
+                      <div className="menu-sep" />
+                      <button
+                        role="menuitem"
+                        className="accent"
+                        onClick={() => {
+                          window.dispatchEvent(new Event('fpesa:admin'));
+                          setMenuOpen(false);
+                        }}
+                      >
+                        <IconChart size={15} />
+                        Operator dashboard
+                      </button>
+                    </>
+                  )}
 
                   {canInstall && (
                     <>

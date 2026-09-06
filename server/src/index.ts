@@ -20,6 +20,7 @@ import { walletRouter } from './routes/wallet.routes.js';
 import { socialRouter } from './routes/social.routes.js';
 import { webhookRouter } from './routes/webhook.routes.js';
 import { fairnessRouter } from './routes/fairness.routes.js';
+import { adminRouter } from './routes/admin.routes.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const clientDist = path.resolve(here, '../../client/dist');
@@ -75,6 +76,7 @@ async function main(): Promise<void> {
   app.use('/api/social', socialRouter);
   app.use('/api/webhooks', webhookRouter);
   app.use('/api/fairness', fairnessRouter);
+  app.use('/api/admin', adminRouter);
 
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'NOT_FOUND', message: 'Unknown endpoint.' });

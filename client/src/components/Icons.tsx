@@ -101,6 +101,16 @@ export function IconLogout({ size = 16, className }: IconProps): JSX.Element {
   );
 }
 
+export function IconChart({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg {...base(size)} className={className} aria-hidden="true">
+      <line x1="18" y1="20" x2="18" y2="10" />
+      <line x1="12" y1="20" x2="12" y2="4" />
+      <line x1="6" y1="20" x2="6" y2="14" />
+    </svg>
+  );
+}
+
 export function IconDownload({ size = 16, className }: IconProps): JSX.Element {
   return (
     <svg {...base(size)} className={className} aria-hidden="true">

@@ -166,10 +166,10 @@ export function TradePanel(): JSX.Element {
             onClick={() => void startAuto()}
           >
             <span className="at-main">
-              {autoBusy ? 'Opening…' : 'Auto-Trade ' + autoRunCount + ' positions'}
+              {autoBusy ? 'Opening…' : 'Fpesa Auto'}
             </span>
             <span className="at-sub">
-              {ksh(stakeAmount)} each · {ksh(stakeAmount * autoRunCount)} total · side picked at random
+              {autoRunCount} positions · {ksh(stakeAmount)} each · {ksh(stakeAmount * autoRunCount)} total · side picked at random
             </span>
           </button>
 

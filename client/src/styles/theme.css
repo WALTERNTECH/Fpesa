@@ -750,9 +750,9 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 }
 
 /* ---------------------------------------------------------- sticky ticket */
-/* On a phone the panel's own Buy/Sell pair is hidden and this bar carries the
-   actions instead, so the chart stays visible while the trade is placed. */
-.trade-actions { display: none; }
+/* The pinned bar carries Fpesa Auto now, so the panel keeps manual Buy/Sell on
+   every width — otherwise choosing your own side would vanish on a phone. */
+.trade-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .trade-login { margin-top: 0; }
 
 .trade-bar {
@@ -1312,7 +1312,6 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   /* The panel now sits beside the chart, so both are visible at once and the
      pinned bar is redundant. */
   .trade-bar { display: none; }
-  .trade-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .trade-login { margin-top: 12px; }
   .support-fab { bottom: calc(14px + var(--safe-b)); }
   .install-sheet { bottom: calc(10px + var(--safe-b)); }
@@ -1548,3 +1547,31 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 }
 .at-live b.up { color: var(--up); }
 .at-live b.down { color: var(--down); }
+
+/* The pinned bar's single action. */
+.bar-auto {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 52px;
+  border-radius: var(--r);
+  background: linear-gradient(135deg, var(--blue) 0%, #1a63f0 100%);
+  color: #fff;
+  box-shadow: var(--shadow-blue);
+  transition: filter 0.16s var(--ease), transform 0.12s var(--ease);
+}
+.bar-auto:active:not(:disabled) { transform: translateY(1px); }
+.bar-auto:disabled { opacity: 0.45; cursor: not-allowed; }
+@media (hover: hover) {
+  .bar-auto:hover:not(:disabled) { filter: brightness(1.08); }
+}
+.ba-main {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.ba-sub { font-size: 10.5px; color: rgba(255, 255, 255, 0.72); }

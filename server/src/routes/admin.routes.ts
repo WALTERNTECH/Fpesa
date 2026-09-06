@@ -180,6 +180,11 @@ adminRouter.get('/overview', async (_req, res) => {
       armed: day.deposits >= env.dailyPayoutMinBase, minBase: env.dailyPayoutMinBase,
     },
     exposure: day,
+    // Live directional risk on the open book, and what each move does to it.
+    live: await liveExposure(instrument?.price ?? 0),
+    // The admin chart streams from the trading service, so it plots exactly
+    // the same series the traders are looking at.
+    feedOrigin: env.appMode === 'admin' ? env.upstreamUrl : '',
     instrument,
     upstream: remote ? { ok: upstreamOk, url: env.upstreamUrl } : undefined,
     settings: {
@@ -219,6 +224,88 @@ adminRouter.get('/overview', async (_req, res) => {
           }),
   });
 });
+
+type OpenRow = {
+  direction: 'BUY' | 'SELL';
+  stake: string | number;
+  multiplier: string | number;
+  entry_price: string | number;
+  stop_out_price: string | number | null;
+  max_profit: string | number | null;
+  expires_at: string;
+};
+
+/**
+ * The book's live directional risk.
+ *
+ * This is the operator's actual signal. Not where price is going — nothing
+ * knowable says that on a driftless walk — but where the house is exposed if
+ * it goes somewhere. If most open stake is on Buy, the house is short and a
+ * rally is what costs money.
+ *
+ * The ladder prices that out: for each candidate move it sums what every open
+ * position would pay or lose, applying the same clamps settlement applies, and
+ * flips the sign to the house's side.
+ */
+async function liveExposure(price: number): Promise<{
+  openCount: number;
+  buyStake: number;
+  sellStake: number;
+  netBias: number;
+  worstCase: number;
+  ladder: Array<{ movePct: number; priceAt: number; housePnl: number }>;
+} | null> {
+  const { data, error } = await db
+    .from('trades')
+    .select('direction, stake, multiplier, entry_price, stop_out_price, max_profit, expires_at')
+    .eq('status', 'OPEN')
+    .eq('account_mode', 'real')
+    .limit(2000);
+  if (error) {
+    console.error('[admin] exposure read failed:', error.message);
+    return null;
+  }
+  const rows = (data ?? []) as OpenRow[];
+
+  let buyStake = 0;
+  let sellStake = 0;
+  for (const r of rows) {
+    const stake = Number(r.stake);
+    if (r.direction === 'BUY') buyStake += stake;
+    else sellStake += stake;
+  }
+
+  const traderPnlAt = (p: number): number =>
+    rows.reduce((sum, r) => {
+      const stake = Number(r.stake);
+      const entry = Number(r.entry_price);
+      const mult = Number(r.multiplier);
+      const cap = r.max_profit === null ? stake : Number(r.max_profit);
+      const move = (p - entry) / entry;
+      const signed = r.direction === 'BUY' ? move : -move;
+      return sum + Math.min(Math.max(stake * mult * signed, -stake), cap);
+    }, 0);
+
+  const moves = [-0.002, -0.001, -0.0005, -0.00025, 0, 0.00025, 0.0005, 0.001, 0.002];
+  const ladder = moves.map((m) => {
+    const at = Math.round(price * (1 + m) * 100) / 100;
+    return {
+      movePct: Number((m * 100).toFixed(3)),
+      priceAt: at,
+      // Positive is good for the house: what the traders lose, the book keeps.
+      housePnl: Math.round(-traderPnlAt(at) * 100) / 100,
+    };
+  });
+
+  return {
+    openCount: rows.length,
+    buyStake: Math.round(buyStake * 100) / 100,
+    sellStake: Math.round(sellStake * 100) / 100,
+    netBias: Math.round((buyStake - sellStake) * 100) / 100,
+    worstCase: Math.round(Math.min(...ladder.map((l) => l.housePnl)) * 100) / 100,
+    ladder,
+  };
+}
 
 /** Abramowitz-Stegun 7.1.26 — plenty accurate for an operations readout. */
 function normalCdf(z: number): number {

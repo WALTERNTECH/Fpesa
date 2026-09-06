@@ -8,7 +8,9 @@ import {
   TradeError,
   toPublicTrade,
   tradingEngine,
+  toPublicRun,
   type Duration,
+  type RunRow,
   type TradeRow,
 } from '../services/trading.js';
 
@@ -62,6 +64,61 @@ tradeRouter.post('/', requireAuth, placeLimiter, async (req, res) => {
     console.error('[trade] unexpected failure:', err);
     res.status(500).json({ error: 'TRADE_FAILED', message: 'Could not open the trade.' });
   }
+});
+
+const runSchema = placeSchema.extend({
+  count: z.coerce.number().int().min(2).max(5).default(3),
+});
+
+/**
+ * Auto-run: the same ticket placed several times, each leg opening once the
+ * previous settles. The sequencing runs on the server, so a locked phone or a
+ * closed tab does not strand the batch part way through.
+ */
+tradeRouter.post('/run', requireAuth, placeLimiter, async (req, res) => {
+  const parsed = runSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: 'VALIDATION',
+      message: parsed.error.issues[0]?.message ?? 'Check the trade details.',
+    });
+    return;
+  }
+  const { direction, stake, durationSec, accountMode, count } = parsed.data;
+
+  try {
+    const result = await tradingEngine.startRun({
+      userId: req.user!.id,
+      mode: accountMode,
+      direction,
+      stake,
+      durationSec: durationSec as Duration,
+      count,
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    if (err instanceof TradeError) {
+      res.status(err.status).json({ error: err.code, message: err.message });
+      return;
+    }
+    console.error('[trade] run failed:', err);
+    res.status(500).json({ error: 'RUN_FAILED', message: 'Could not start the auto-run.' });
+  }
+});
+
+/** Progress of one run, for rehydrating after a refresh. */
+tradeRouter.get('/runs/:id', requireAuth, async (req, res) => {
+  const { data, error } = await db
+    .from('trade_runs')
+    .select('*')
+    .eq('id', req.params.id)
+    .eq('user_id', req.user!.id)
+    .maybeSingle();
+  if (error || !data) {
+    res.status(404).json({ error: 'NOT_FOUND', message: 'Run not found.' });
+    return;
+  }
+  res.json({ run: toPublicRun(data as RunRow) });
 });
 
 tradeRouter.get('/', requireAuth, async (req, res) => {

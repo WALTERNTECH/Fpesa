@@ -10,6 +10,7 @@ export function TradePanel(): JSX.Element {
     user, config, accountMode, setAccountMode, balance, openModal,
     stake, setStake, duration, setDuration,
     tradeBusy, tradeError, setTradeError, stakeIssue, canTrade, submitTrade, desk,
+    autoRun, setAutoRun, autoRunCount, run,
   } = useApp();
 
   const stakeAmount = Number(stake);
@@ -155,6 +156,39 @@ export function TradePanel(): JSX.Element {
                 {ksh(spreadCost)} · {(config.houseEdge * 100).toFixed(1)}%
               </span>
             </div>
+          </div>
+
+          <div className="autorun">
+            <label className="autorun-row">
+              <input
+                type="checkbox"
+                checked={autoRun}
+                onChange={(e) => setAutoRun(e.target.checked)}
+              />
+              <span className="autorun-copy">
+                <b>Auto-run {autoRunCount} trades</b>
+                <small>
+                  Places the same ticket {autoRunCount} times, one after the next, then
+                  reports the net. Runs on the server, so you can close the app.
+                </small>
+              </span>
+            </label>
+            {autoRun && (
+              <div className="autorun-total">
+                <span>Total at risk if all {autoRunCount} run</span>
+                <b className="tnum">{ksh(stakeAmount * autoRunCount)}</b>
+              </div>
+            )}
+            {run && run.status === 'RUNNING' && (
+              <div className="autorun-live">
+                <span>
+                  Trade {Math.min(run.completedCount + 1, run.totalCount)} of {run.totalCount}
+                </span>
+                <b className={'tnum ' + (run.netProfit >= 0 ? 'up' : 'down')}>
+                  {run.netProfit >= 0 ? '+' : '−'}{ksh(Math.abs(run.netProfit))}
+                </b>
+              </div>
+            )}
           </div>
 
           <TradeAnalyser />

@@ -26,6 +26,7 @@ export type TradeRow = {
   take_profit_price: string | number | null;
   max_profit: string | number | null;
   close_reason: 'EXPIRY' | 'STOP_OUT' | 'TAKE_PROFIT' | null;
+  run_id?: string | null;
 };
 
 export type PublicTrade = {
@@ -161,6 +162,46 @@ export class TradeError extends Error {
   }
 }
 
+export type RunRow = {
+  id: string;
+  user_id: string;
+  account_mode: 'demo' | 'real';
+  direction: 'BUY' | 'SELL';
+  stake: string | number;
+  duration_sec: number;
+  total_count: number;
+  completed_count: number;
+  net_profit: string | number;
+  status: 'RUNNING' | 'DONE' | 'ABORTED';
+  abort_reason: string | null;
+};
+
+export type PublicRun = {
+  id: string;
+  direction: 'BUY' | 'SELL';
+  stake: number;
+  durationSec: number;
+  totalCount: number;
+  completedCount: number;
+  netProfit: number;
+  status: RunRow['status'];
+  abortReason: string | null;
+};
+
+export function toPublicRun(row: RunRow): PublicRun {
+  return {
+    id: row.id,
+    direction: row.direction,
+    stake: Number(row.stake),
+    durationSec: row.duration_sec,
+    totalCount: row.total_count,
+    completedCount: row.completed_count,
+    netProfit: Number(row.net_profit),
+    status: row.status,
+    abortReason: row.abort_reason,
+  };
+}
+
 /** What the tick monitor needs to decide whether a position must close now. */
 type LivePosition = {
   id: string;
@@ -274,6 +315,8 @@ class TradingEngine {
     direction: 'BUY' | 'SELL';
     stake: number;
     durationSec: Duration;
+    runId?: string;
+    runIndex?: number;
   }): Promise<{ trade: PublicTrade; balance: number }> {
     const { userId, mode, direction, stake, durationSec } = params;
 
@@ -358,11 +401,130 @@ class TradingEngine {
     }
 
     const result = data as { trade: TradeRow; balance: string | number };
+    if (params.runId) {
+      // The place function is shared with hand-placed trades, so the run
+      // linkage is attached here rather than threaded through its signature.
+      await db
+        .from('trades')
+        .update({ run_id: params.runId, run_index: params.runIndex ?? null })
+        .eq('id', result.trade.id);
+      result.trade.run_id = params.runId;
+    }
     const trade = toPublicTrade(result.trade);
     this.track(trade);
     this.scheduleSettlement(trade.id, durationSec * 1000);
 
     return { trade, balance: Number(result.balance) };
+  }
+
+  /**
+   * Starts an auto-run: the same ticket placed `count` times, each leg opening
+   * only once the previous has settled.
+   *
+   * Sequencing lives on the server rather than in the browser so a locked
+   * phone, a dropped connection or a closed tab cannot strand a run half way
+   * through. Nothing about a leg differs from a hand-placed trade — same entry,
+   * same barriers, same settlement.
+   */
+  async startRun(params: {
+    userId: string;
+    mode: 'demo' | 'real';
+    direction: 'BUY' | 'SELL';
+    stake: number;
+    durationSec: Duration;
+    count: number;
+  }): Promise<{ run: PublicRun; trade: PublicTrade; balance: number }> {
+    const { userId, mode, direction, stake, durationSec, count } = params;
+
+    const { data, error } = await db
+      .from('trade_runs')
+      .insert({
+        user_id: userId,
+        account_mode: mode,
+        direction,
+        stake: Math.round(stake * 100) / 100,
+        duration_sec: durationSec,
+        total_count: count,
+      })
+      .select('*')
+      .single();
+    if (error || !data) {
+      console.error('[trading] could not open run:', error?.message);
+      throw new TradeError('RUN_FAILED', 'Could not start the auto-run.', 500);
+    }
+    const run = data as RunRow;
+
+    try {
+      const first = await this.placeTrade({
+        userId, mode, direction, stake, durationSec,
+        runId: run.id, runIndex: 1,
+      });
+      return { run: toPublicRun(run), ...first };
+    } catch (err) {
+      // The run never got off the ground; close it rather than leave a
+      // RUNNING row that nothing will ever advance.
+      await db.rpc('fpesa_abort_run', {
+        p_run: run.id,
+        p_reason: err instanceof TradeError ? err.message : 'Could not open the first trade',
+      });
+      throw err;
+    }
+  }
+
+  /**
+   * Records a settled leg against its run and opens the next one.
+   *
+   * A leg that cannot be funded, or a desk that has since closed, ends the run
+   * cleanly with a reason rather than silently stopping — the trader is told
+   * how many legs actually ran and what the net came to.
+   */
+  private async advanceRun(runId: string, profit: number, userId: string): Promise<void> {
+    const { data, error } = await db.rpc('fpesa_advance_run', {
+      p_run: runId,
+      p_profit: profit,
+    });
+    if (error) {
+      console.error('[trading] advance run failed:', error.message);
+      return;
+    }
+    const result = data as { stale?: true; run?: RunRow; more?: boolean };
+    if (result.stale || !result.run) return;
+
+    const run = result.run;
+    if (!result.more) {
+      hub.toUser(userId, { type: 'run', run: toPublicRun(run) });
+      return;
+    }
+
+    try {
+      const next = await this.placeTrade({
+        userId,
+        mode: run.account_mode,
+        direction: run.direction,
+        stake: Number(run.stake),
+        durationSec: run.duration_sec as Duration,
+        runId: run.id,
+        runIndex: run.completed_count + 1,
+      });
+      hub.toUser(userId, {
+        type: 'run',
+        run: toPublicRun(run),
+        trade: next.trade,
+        balance: next.balance,
+      });
+    } catch (err) {
+      const reason =
+        err instanceof TradeError ? err.message : 'The next trade could not be opened.';
+      const { data: aborted } = await db.rpc('fpesa_abort_run', {
+        p_run: run.id,
+        p_reason: reason,
+      });
+      const a = aborted as { run?: RunRow } | null;
+      hub.toUser(userId, {
+        type: 'run',
+        run: a?.run ? toPublicRun(a.run) : { ...toPublicRun(run), status: 'ABORTED', abortReason: reason },
+      });
+    }
   }
 
   /** Settles one trade against the live feed. Safe to call twice. */
@@ -393,6 +555,11 @@ class TradingEngine {
     const balance = Number(result.balance);
 
     hub.toUser(result.trade.user_id, { type: 'trade', trade, balance });
+
+    // A leg of an auto-run pulls the next leg in behind it.
+    if (result.trade.run_id) {
+      void this.advanceRun(result.trade.run_id, trade.profit ?? 0, result.trade.user_id);
+    }
 
     // Real-money wins above a threshold surface on the public activity feed.
     if (trade.accountMode === 'real' && trade.status === 'WON' && (trade.profit ?? 0) >= 500) {

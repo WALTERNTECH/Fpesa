@@ -4,6 +4,7 @@ export type ServerMessage =
   | { type: 'feed'; kind: string; username: string; amount: number; createdAt: string }
   | { type: 'leaderboard'; rows: unknown[] }
   | { type: 'trade'; trade: unknown; balance: number }
+  | { type: 'run'; run: unknown; trade?: unknown; balance?: number }
   | { type: 'balance'; demoBalance?: number; realBalance?: number }
   | { type: 'presence'; online: number }
   | {

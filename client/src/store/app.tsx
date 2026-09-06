@@ -18,6 +18,7 @@ import type {
   Trade,
   User,
   DeskState,
+  Run,
 } from '../lib/types';
 
 export type Toast = {
@@ -59,6 +60,12 @@ type AppValue = {
   stakeIssue: string | null;
   canTrade: boolean;
   desk: DeskState;
+
+  /* Auto-run: the same ticket repeated, sequenced on the server. */
+  autoRun: boolean;
+  setAutoRun: (on: boolean) => void;
+  autoRunCount: number;
+  run: Run | null;
   submitTrade: (direction: Direction) => Promise<void>;
 
   modal: ModalKind;
@@ -133,6 +140,9 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
   const [tradeBusy, setTradeBusy] = useState<Direction | null>(null);
   const [tradeError, setTradeError] = useState<string | null>(null);
   const [desk, setDesk] = useState<DeskState>(DEFAULT_CONFIG.desk);
+  const [autoRun, setAutoRun] = useState(false);
+  const [run, setRun] = useState<Run | null>(null);
+  const autoRunCount = 3;
 
   const lastPrice = useRef(0);
   const toastId = useRef(0);
@@ -221,6 +231,37 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
           // rather than by where the market actually is.
           if (flashTimer.current) window.clearTimeout(flashTimer.current);
           flashTimer.current = window.setTimeout(() => setTickDir(null), 450);
+        }
+        return;
+      }
+      if (msg.type === 'run') {
+        const r = msg.run as Run;
+        setRun(r);
+        const leg = msg.trade as Trade | undefined;
+        if (leg) setOpenTrades((prev) => [...prev, leg]);
+        // The next leg's debit lands here. Which balance it came out of is on
+        // the trade itself, so there is no need to guess from current UI state.
+        if (leg && typeof msg.balance === 'number') {
+          const bal = msg.balance;
+          setUser((prev) => {
+            if (!prev) return prev;
+            return leg.accountMode === 'demo'
+              ? { ...prev, demoBalance: bal }
+              : { ...prev, realBalance: bal };
+          });
+        }
+        if (r.status !== 'RUNNING') {
+          const up = r.netProfit >= 0;
+          pushToast({
+            tone: up ? 'win' : 'lose',
+            icon: up ? '▲' : '▼',
+            title:
+              r.completedCount + ' of ' + r.totalCount + ' trades  ' +
+              (up ? '+' : '−') + 'KSh ' + Math.abs(r.netProfit).toFixed(2),
+            detail: r.status === 'ABORTED'
+              ? (r.abortReason ?? 'Run stopped early.')
+              : 'Auto-run complete.',
+          });
         }
         return;
       }
@@ -418,12 +459,15 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       setTradeBusy(direction);
       setTradeError(null);
       try {
-        const res = await api.post<{ trade: Trade; balance: number }>('/trades', {
-          direction,
-          stake: amount,
-          durationSec: duration,
-          accountMode,
-        });
+        const res = autoRun
+          ? await api.post<{ trade: Trade; balance: number; run: Run }>('/trades/run', {
+              direction, stake: amount, durationSec: duration, accountMode,
+              count: autoRunCount,
+            })
+          : await api.post<{ trade: Trade; balance: number }>('/trades', {
+              direction, stake: amount, durationSec: duration, accountMode,
+            });
+        if ('run' in res) setRun(res.run as Run);
         setOpenTrades((prev) => [...prev, res.trade]);
         setUser((prev) => {
           if (!prev) return prev;
@@ -437,7 +481,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
         setTradeBusy(null);
       }
     },
-    [user, stake, duration, accountMode, tradeBusy]
+    [user, stake, duration, accountMode, tradeBusy, autoRun, autoRunCount]
   );
 
   const openModal = useCallback((kind: ModalKind) => setModal(kind), []);
@@ -468,6 +512,10 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       canTrade,
       submitTrade,
       desk,
+      autoRun,
+      setAutoRun,
+      autoRunCount,
+      run,
       modal,
       openModal,
       closeModal,
@@ -482,7 +530,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
     [
       ready, config, user, quote, price, tickDir, connected, online, accountMode,
       balance, openTrades, stake, duration, tradeBusy, tradeError, stakeIssue,
-      canTrade, submitTrade, desk, modal, openModal, closeModal, login, register,
+      canTrade, submitTrade, desk, autoRun, autoRunCount, run, modal, openModal, closeModal, login, register,
       logout, refreshUser, resetDemo, toasts, pushToast,
     ]
   );

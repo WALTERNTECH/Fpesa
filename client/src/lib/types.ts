@@ -36,6 +36,18 @@ export type Trade = {
   closeReason: 'EXPIRY' | 'STOP_OUT' | 'TAKE_PROFIT' | null;
 };
 
+export type Run = {
+  id: string;
+  direction: Direction;
+  stake: number;
+  durationSec: number;
+  totalCount: number;
+  completedCount: number;
+  netProfit: number;
+  status: 'RUNNING' | 'DONE' | 'ABORTED';
+  abortReason: string | null;
+};
+
 export type Candle = {
   time: number;
   open: number;

@@ -167,25 +167,32 @@ remaining after N trades = (1 - edge) ^ N
 Read the table as *what a depositor can still withdraw*, so the operator keeps
 the remainder:
 
-| Edge | After 10 trades | After 20 | After 30 |
-| --- | --- | --- | --- |
-| 3% (Aviator's ~97% RTP) | 74% | 54% | 40% |
-| **6% (default)** | 54% | **29%** | 16% |
-| 8% | 43% | 19% | 8% |
-| 10% | 35% | 12% | 4% |
+Read the table as *what the operator keeps*:
 
-The default is tuned so ~30% of deposits are disbursed and ~70% retained, at an
-assumed 20 trades per depositor. That assumption is the whole game — the same
-edge keeps far less from a trader who stops after five trades, and far more from
-one who makes forty:
+| Edge | 5 trades | 10 trades | 15 | 20 |
+| --- | --- | --- | --- | --- |
+| 6% | 27% | 46% | 60% | 71% |
+| 9% | 38% | 61% | 76% | 85% |
+| **11% (default)** | 44% | **69%** | 83% | 90% |
+| 13% | 50% | 75% | 88% | 94% |
+
+The default targets **~70% retained / 30% disbursed at ~10 trades per
+depositor**. The churn figure is the whole assumption — the same edge keeps
+only 44% from someone who stops after five trades, and 90% from someone who
+makes twenty:
 
 | Avg trades per depositor | Edge for a 30% disbursement |
 | --- | --- |
 | 5 | 21.4% |
-| 10 | 11.3% |
+| 8 | 14.0% |
+| **10** | **11.3%** |
 | 15 | 7.7% |
-| **20** | **5.8%** |
-| 30 | 3.9% |
+| 20 | 5.8% |
+
+Note the feedback loop: the edge is disclosed as a shilling cost before each
+position opens, so pushing it much past this point becomes visible enough to
+suppress the churn the retention depends on — which then demands a higher edge
+again. Measure real churn before reaching for a bigger number.
 
 So `TRADE_HOUSE_EDGE` is the only knob that should ever be reached for to change
 the take, and it should be set against **measured** churn, not a guess. Read the

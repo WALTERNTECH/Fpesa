@@ -93,14 +93,20 @@ export const env = {
    * the trader by edge/multiplier, so the expected cost is exactly this share
    * of the stake at every duration.
    *
-   * This, not any per-user selection, is what sets long-run disbursement:
-   * remaining = (1 - edge) ^ trades. At 0.06 a deposit is down to ~29% after
-   * 20 trades — i.e. ~30% disbursed, 70% retained. Raise it to disburse less.
+   * This is the only thing that sets long-run retention, since nothing is
+   * withheld from anyone: retained = 1 - (1 - edge) ^ trades.
    *
-   * Retune against real churn: the 0.06 default assumes ~20 trades per
-   * depositor. Read the real figure from GET /api/wallet/book.
+   * 0.11 targets ~70% retained (30% disbursed) at ~10 trades per depositor,
+   * which is roughly what a mixed book of traders produces. The churn figure
+   * is the whole assumption: at 5 trades the same edge keeps only 44%, and at
+   * 20 it keeps 90%. Measure it from GET /api/wallet/book (trades divided by
+   * depositors) and reset this against the real number.
+   *
+   * It is disclosed in the trade panel as a shilling cost before the position
+   * opens. Raising it far past here starts being visible enough to suppress
+   * the very churn the retention depends on.
    */
-  houseEdge: num('TRADE_HOUSE_EDGE', 0.06),
+  houseEdge: num('TRADE_HOUSE_EDGE', 0.11),
   /**
    * Hard backstop on the day's book. Once net shillings paid to traders reach
    * this share of the day's deposits, the desk stops opening NEW real

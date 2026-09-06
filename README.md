@@ -66,17 +66,28 @@ The default instrument is **FPX100 (Fpesa Volatility 100)** — a synthetic inde
 generated deterministically from a seed, not a feed of a real market. Every
 tick is:
 
+```
+digest   = HMAC-SHA256(seed, "<epoch>:<tickIndex>")
+z        = Box-Muller(two 53-bit words of the digest)
+price[i] = price[i-1] * exp(drift*dt + sigma*sqrt(dt)*z)
+```
 
+Each step is rounded to two decimals and the **rounded** value is carried into
+the next — a verifier that keeps full precision agrees for a tick or two and
+then drifts by cents, which looks exactly like a rigged feed when it is a
+rounding bug.
 
 The SHA-256 of each epoch's seed is published **before** that epoch produces a
 tick; the seed itself is published once the epoch closes. Anyone can replay a
 closed epoch and confirm the prices they traded on:
 
+```bash
+node scripts/verify-epoch.mjs
+```
 
-
- carries the algorithm, the parameters (including drift —
+`GET /api/fairness` carries the algorithm, the parameters (including drift —
 a tilt nobody can see is indistinguishable from a rigged feed), the open
-commitment, and the revealed seeds.  is the operator
+commitment, and the revealed seeds. `GET /api/fairness/engine` is the operator
 view: live parameters, current epoch, and the expected move per duration.
 
 **The honest limit:** the commitment stops outcomes being *altered*, not
@@ -84,8 +95,9 @@ view: live parameters, current epoch, and the expected move per duration.
 path, which is why epochs are short and the live seed is never served by any
 endpoint until its epoch closes. Treat it as a production secret.
 
-Setting  switches back to a real XAU/USD feed, which is not
-replayable —  says so rather than claiming a proof it cannot give.
+Setting `PRICE_MODE=live` switches back to a real XAU/USD feed, which is not
+replayable — `/api/fairness` says so plainly rather than claiming a proof it
+cannot give.
 
 ---
 

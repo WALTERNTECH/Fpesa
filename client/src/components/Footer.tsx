@@ -15,11 +15,6 @@ export function Footer(): JSX.Element {
         <a href={config.supportTelegram} target="_blank" rel="noopener noreferrer">
           Support
         </a>
-        {config.provablyFair && (
-          <a href="/api/fairness" target="_blank" rel="noopener noreferrer">
-            Provably fair
-          </a>
-        )}
         {canInstall && (
           <button
             onClick={() => {

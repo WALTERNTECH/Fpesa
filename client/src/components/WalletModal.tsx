@@ -12,6 +12,14 @@ const QUICK = [100, 500, 1000, 2500, 5000, 10000];
 
 export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
   const { closeModal, user, config, refreshUser, pushToast } = useApp();
+
+  // Turnover is a lifetime running total, so remaining is simply the gap.
+  const turnoverRequired = user?.turnoverRequired ?? 0;
+  const turnoverProgress = user?.turnoverProgress ?? 0;
+  const turnoverRemaining = Math.max(turnoverRequired - turnoverProgress, 0);
+  const turnoverPct = turnoverRequired > 0
+    ? Math.min(turnoverProgress / turnoverRequired, 1)
+    : 1;
   const isDeposit = kind === 'deposit';
 
   const [amount, setAmount] = useState('');
@@ -127,6 +135,30 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
               <span className="v tnum" style={{ color: 'var(--ink)' }}>
                 {ksh(available)}
               </span>
+            </div>
+          )}
+
+          {/* Stated on the deposit screen too, not just when a withdrawal is
+              refused — a condition attached to money is only fair if it is
+              known before the money goes in. */}
+          {turnoverRemaining > 0 && (
+            <div className="turnover">
+              <div className="turnover-head">
+                <span>Trading requirement</span>
+                <span className="tnum">
+                  {ksh(turnoverProgress, true)} / {ksh(turnoverRequired, true)}
+                </span>
+              </div>
+              <div className="turnover-bar" aria-hidden="true">
+                <i style={{ width: Math.round(turnoverPct * 100) + '%' }} />
+              </div>
+              <p className="turnover-note">
+                {isDeposit
+                  ? 'Deposits must be traded through ' + config.turnoverMultiple +
+                    '× before they can be withdrawn. This deposit will add ' +
+                    ksh(Math.max(value, 0) * config.turnoverMultiple, true) + '.'
+                  : ksh(turnoverRemaining) + ' of trading left before you can withdraw.'}
+              </p>
             </div>
           )}
 

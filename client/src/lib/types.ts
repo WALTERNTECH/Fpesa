@@ -5,6 +5,8 @@ export type User = {
   demoBalance: number;
   realBalance: number;
   isAdmin: boolean;
+  turnoverRequired: number;
+  turnoverProgress: number;
 };
 
 export type AccountMode = 'demo' | 'real';
@@ -114,6 +116,7 @@ export type PlatformConfig = {
   multipliers: Record<string, number>;
   maxProfitMultiple: number;
   houseEdge: number;
+  turnoverMultiple: number;
   desk: DeskState;
   minDeposit: number;
   minWithdrawal: number;

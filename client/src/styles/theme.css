@@ -1333,3 +1333,41 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ------------------------------------------------------ turnover progress */
+.turnover {
+  padding: 12px 14px;
+  border-radius: var(--r);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  margin-bottom: 16px;
+}
+.turnover-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.turnover-head span:last-child {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--ink);
+}
+.turnover-bar {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+.turnover-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--blue);
+  transition: width 0.3s var(--ease);
+}
+.turnover-note { margin-top: 8px; font-size: 11.5px; color: var(--subtle); line-height: 1.5; }

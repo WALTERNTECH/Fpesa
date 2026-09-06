@@ -104,7 +104,15 @@ walletRouter.get('/transactions/:id', requireAuth, async (req, res) => {
 });
 
 walletRouter.get('/balance', requireAuth, (req, res) => {
-  res.json({ demoBalance: req.user!.demoBalance, realBalance: req.user!.realBalance });
+  const remaining = Math.max(req.user!.turnoverRequired - req.user!.turnoverProgress, 0);
+  res.json({
+    demoBalance: req.user!.demoBalance,
+    realBalance: req.user!.realBalance,
+    turnoverRequired: req.user!.turnoverRequired,
+    turnoverProgress: req.user!.turnoverProgress,
+    turnoverRemaining: Math.round(remaining * 100) / 100,
+    canWithdraw: remaining <= 0,
+  });
 });
 
 /**

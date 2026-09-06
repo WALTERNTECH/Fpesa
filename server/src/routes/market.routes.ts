@@ -52,6 +52,7 @@ marketRouter.get('/config', (_req, res) => {
     // Disclosed, not buried: the trader can see the cost of opening a position
     // before they open one, the same way a broker publishes its spread.
     houseEdge: env.houseEdge,
+    turnoverMultiple: env.turnoverMultiple,
     minDeposit: env.minDeposit,
     minWithdrawal: env.minWithdrawal,
     supportTelegram: env.supportTelegram,

@@ -11,6 +11,8 @@ export type SessionUser = {
   demoBalance: number;
   realBalance: number;
   isAdmin: boolean;
+  turnoverRequired: number;
+  turnoverProgress: number;
 };
 
 declare global {
@@ -52,6 +54,8 @@ type UserRow = {
   real_balance: string | number;
   is_admin: boolean;
   is_active: boolean;
+  turnover_required: string | number;
+  turnover_progress: string | number;
 };
 
 export function toSessionUser(row: UserRow): SessionUser {
@@ -62,13 +66,15 @@ export function toSessionUser(row: UserRow): SessionUser {
     demoBalance: Number(row.demo_balance),
     realBalance: Number(row.real_balance),
     isAdmin: row.is_admin,
+    turnoverRequired: Number(row.turnover_required ?? 0),
+    turnoverProgress: Number(row.turnover_progress ?? 0),
   };
 }
 
 async function loadUser(userId: string): Promise<SessionUser | null> {
   const { data, error } = await db
     .from('users')
-    .select('id, username, phone, demo_balance, real_balance, is_admin, is_active')
+    .select('id, username, phone, demo_balance, real_balance, is_admin, is_active, turnover_required, turnover_progress')
     .eq('id', userId)
     .maybeSingle();
   if (error || !data) return null;

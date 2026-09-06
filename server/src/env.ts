@@ -89,6 +89,18 @@ export const env = {
    * deposits that would bring the ratio back down.
    */
   dailyPayoutMinBase: num('DAILY_PAYOUT_MIN_DEPOSITS', 20000),
+  /**
+   * Staked volume a deposit must go through before it can be withdrawn, as a
+   * multiple of the deposit.
+   *
+   * The house only earns on volume, so the share of a deposit retained is
+   * edge x turnover. Retaining 70% at the 6% edge therefore needs 0.70/0.06 =
+   * 11.7x. Deliberately a VOLUME multiple and not a trade count: twelve KSh 50
+   * trades on a KSh 2,600 deposit would satisfy a count while risking nothing.
+   *
+   * Set to 0 to disable the requirement entirely.
+   */
+  turnoverMultiple: num('WITHDRAWAL_TURNOVER_MULTIPLE', 11.7),
   minStake: num('TRADE_MIN_STAKE', 50),
   maxStake: num('TRADE_MAX_STAKE', 20000),
   demoStartingBalance: num('DEMO_STARTING_BALANCE', 10000),

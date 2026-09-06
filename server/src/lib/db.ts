@@ -18,6 +18,7 @@ export function pgErrorCode(message: string | undefined): string | null {
     'INSUFFICIENT_FUNDS',
     'WITHDRAWAL_IN_FLIGHT',
     'TRANSACTION_NOT_FOUND',
+    'TURNOVER_NOT_MET',
   ];
   return known.find((c) => message.includes(c)) ?? null;
 }

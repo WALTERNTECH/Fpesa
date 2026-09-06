@@ -194,6 +194,16 @@ export async function startWithdrawal(user: {
         'You already have a withdrawal being processed. Wait for it to finish.'
       );
     }
+    if (code === 'TURNOVER_NOT_MET') {
+      // The function appends the shortfall to the code, so the trader is told
+      // exactly how much trading is left rather than just being refused.
+      const short = Number(/TURNOVER_NOT_MET:([0-9.]+)/.exec(error.message)?.[1] ?? 0);
+      throw new WalletError(
+        'TURNOVER_NOT_MET',
+        'You have KSh ' + short.toLocaleString('en-KE', { minimumFractionDigits: 2 }) +
+          ' of trading left before this deposit can be withdrawn.'
+      );
+    }
     console.error('[wallet] reserve failed:', error.message);
     throw new WalletError('WITHDRAWAL_FAILED', 'Could not start the withdrawal.', 500);
   }
@@ -258,6 +268,7 @@ export async function finaliseTransaction(
           p_result_code: resultCode,
           p_result_desc: resultDesc,
           p_provider_id: providerId,
+          p_turnover_multiple: env.turnoverMultiple,
         }
       : {
           p_reference: ref,

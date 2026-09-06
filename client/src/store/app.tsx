@@ -88,6 +88,7 @@ const DEFAULT_CONFIG: PlatformConfig = {
   multipliers: { '5': 2000, '10': 1400, '15': 1150, '30': 800, '60': 575 },
   maxProfitMultiple: 3,
   houseEdge: 0.06,
+  turnoverMultiple: 11.7,
   desk: { open: true, reason: null, ratio: 0, cap: 0.3, reopenAt: 0.24, minBase: 20000, armed: false },
   minDeposit: 50,
   minWithdrawal: 100,

@@ -109,7 +109,7 @@ authRouter.post('/register', attemptLimiter, async (req, res) => {
       demo_balance: env.demoStartingBalance,
       real_balance: 0,
     })
-    .select('id, username, phone, demo_balance, real_balance, is_admin, is_active')
+    .select('id, username, phone, demo_balance, real_balance, is_admin, is_active, turnover_required, turnover_progress')
     .single();
 
   if (error || !data) {
@@ -142,7 +142,7 @@ authRouter.post('/login', attemptLimiter, async (req, res) => {
 
   const query = db
     .from('users')
-    .select('id, username, phone, password_hash, demo_balance, real_balance, is_admin, is_active');
+    .select('id, username, phone, password_hash, demo_balance, real_balance, is_admin, is_active, turnover_required, turnover_progress');
   const { data } = asPhone
     ? await query.or('username.eq.' + identifier + ',phone.eq.' + asPhone).limit(1).maybeSingle()
     : await query.eq('username', identifier).maybeSingle();

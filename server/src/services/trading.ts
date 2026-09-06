@@ -166,7 +166,7 @@ export type RunRow = {
   id: string;
   user_id: string;
   account_mode: 'demo' | 'real';
-  direction: 'BUY' | 'SELL';
+  direction: 'BUY' | 'SELL' | 'AUTO';
   stake: string | number;
   duration_sec: number;
   total_count: number;
@@ -178,7 +178,7 @@ export type RunRow = {
 
 export type PublicRun = {
   id: string;
-  direction: 'BUY' | 'SELL';
+  direction: 'BUY' | 'SELL' | 'AUTO';
   stake: number;
   durationSec: number;
   totalCount: number;
@@ -200,6 +200,20 @@ export function toPublicRun(row: RunRow): PublicRun {
     status: row.status,
     abortReason: row.abort_reason,
   };
+}
+
+/**
+ * Resolves a run's configured side into a side for one leg.
+ *
+ * AUTO is a coin flip, deliberately. The instrument has no drift, so no rule
+ * derived from past prices does better than chance — and a rule dressed up as
+ * one would be selling the trader a reason that does not exist. Each leg is
+ * flipped separately so a run is three independent positions rather than one
+ * tripled bet.
+ */
+function legDirection(configured: 'BUY' | 'SELL' | 'AUTO'): 'BUY' | 'SELL' {
+  if (configured !== 'AUTO') return configured;
+  return Math.random() < 0.5 ? 'BUY' : 'SELL';
 }
 
 /** What the tick monitor needs to decide whether a position must close now. */
@@ -429,7 +443,7 @@ class TradingEngine {
   async startRun(params: {
     userId: string;
     mode: 'demo' | 'real';
-    direction: 'BUY' | 'SELL';
+    direction: 'BUY' | 'SELL' | 'AUTO';
     stake: number;
     durationSec: Duration;
     count: number;
@@ -456,7 +470,7 @@ class TradingEngine {
 
     try {
       const first = await this.placeTrade({
-        userId, mode, direction, stake, durationSec,
+        userId, mode, direction: legDirection(direction), stake, durationSec,
         runId: run.id, runIndex: 1,
       });
       return { run: toPublicRun(run), ...first };
@@ -500,7 +514,7 @@ class TradingEngine {
       const next = await this.placeTrade({
         userId,
         mode: run.account_mode,
-        direction: run.direction,
+        direction: legDirection(run.direction),
         stake: Number(run.stake),
         durationSec: run.duration_sec as Duration,
         runId: run.id,

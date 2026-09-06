@@ -62,10 +62,10 @@ type AppValue = {
   desk: DeskState;
 
   /* Auto-run: the same ticket repeated, sequenced on the server. */
-  autoRun: boolean;
-  setAutoRun: (on: boolean) => void;
   autoRunCount: number;
   run: Run | null;
+  autoBusy: boolean;
+  startAuto: () => Promise<void>;
   submitTrade: (direction: Direction) => Promise<void>;
 
   modal: ModalKind;
@@ -140,8 +140,8 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
   const [tradeBusy, setTradeBusy] = useState<Direction | null>(null);
   const [tradeError, setTradeError] = useState<string | null>(null);
   const [desk, setDesk] = useState<DeskState>(DEFAULT_CONFIG.desk);
-  const [autoRun, setAutoRun] = useState(false);
   const [run, setRun] = useState<Run | null>(null);
+  const [autoBusy, setAutoBusy] = useState(false);
   const autoRunCount = 3;
 
   const lastPrice = useRef(0);
@@ -459,15 +459,9 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       setTradeBusy(direction);
       setTradeError(null);
       try {
-        const res = autoRun
-          ? await api.post<{ trade: Trade; balance: number; run: Run }>('/trades/run', {
-              direction, stake: amount, durationSec: duration, accountMode,
-              count: autoRunCount,
-            })
-          : await api.post<{ trade: Trade; balance: number }>('/trades', {
-              direction, stake: amount, durationSec: duration, accountMode,
-            });
-        if ('run' in res) setRun(res.run as Run);
+        const res = await api.post<{ trade: Trade; balance: number }>('/trades', {
+          direction, stake: amount, durationSec: duration, accountMode,
+        });
         setOpenTrades((prev) => [...prev, res.trade]);
         setUser((prev) => {
           if (!prev) return prev;
@@ -481,8 +475,42 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
         setTradeBusy(null);
       }
     },
-    [user, stake, duration, accountMode, tradeBusy, autoRun, autoRunCount]
+    [user, stake, duration, accountMode, tradeBusy]
   );
+
+  /** One tap: opens the whole batch, with the server choosing each leg's side. */
+  const startAuto = useCallback(async () => {
+    if (!user) {
+      setModal('login');
+      return;
+    }
+    const amount = Number(stake);
+    if (!Number.isFinite(amount) || autoBusy) return;
+
+    setAutoBusy(true);
+    setTradeError(null);
+    try {
+      const res = await api.post<{ trade: Trade; balance: number; run: Run }>('/trades/run', {
+        direction: 'AUTO',
+        stake: amount,
+        durationSec: duration,
+        accountMode,
+        count: autoRunCount,
+      });
+      setRun(res.run);
+      setOpenTrades((prev) => [...prev, res.trade]);
+      setUser((prev) => {
+        if (!prev) return prev;
+        return accountMode === 'demo'
+          ? { ...prev, demoBalance: res.balance }
+          : { ...prev, realBalance: res.balance };
+      });
+    } catch (err) {
+      setTradeError(err instanceof ApiError ? err.message : 'Could not start the auto-trade.');
+    } finally {
+      setAutoBusy(false);
+    }
+  }, [user, stake, duration, accountMode, autoBusy, autoRunCount]);
 
   const openModal = useCallback((kind: ModalKind) => setModal(kind), []);
   const closeModal = useCallback(() => setModal(null), []);
@@ -512,10 +540,10 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       canTrade,
       submitTrade,
       desk,
-      autoRun,
-      setAutoRun,
       autoRunCount,
       run,
+      autoBusy,
+      startAuto,
       modal,
       openModal,
       closeModal,
@@ -530,7 +558,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
     [
       ready, config, user, quote, price, tickDir, connected, online, accountMode,
       balance, openTrades, stake, duration, tradeBusy, tradeError, stakeIssue,
-      canTrade, submitTrade, desk, autoRun, autoRunCount, run, modal, openModal, closeModal, login, register,
+      canTrade, submitTrade, desk, autoRunCount, run, autoBusy, startAuto, modal, openModal, closeModal, login, register,
       logout, refreshUser, resetDemo, toasts, pushToast,
     ]
   );

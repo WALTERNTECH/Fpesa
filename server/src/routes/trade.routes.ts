@@ -67,6 +67,9 @@ tradeRouter.post('/', requireAuth, placeLimiter, async (req, res) => {
 });
 
 const runSchema = placeSchema.extend({
+  // AUTO lets the server pick each leg's side, which is what the one-tap
+  // auto-trade button sends.
+  direction: z.enum(['BUY', 'SELL', 'AUTO']).default('AUTO'),
   count: z.coerce.number().int().min(2).max(5).default(3),
 });
 

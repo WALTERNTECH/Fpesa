@@ -11,10 +11,15 @@ export function Footer(): JSX.Element {
         Trading carries risk. You can lose the full amount you stake on a trade.
       </p>
       <div className="footer-row">
-        <span>Fpesa · XAU/USD</span>
+        <span>Fpesa · {config.symbol}</span>
         <a href={config.supportTelegram} target="_blank" rel="noopener noreferrer">
           Support
         </a>
+        {config.provablyFair && (
+          <a href="/api/fairness" target="_blank" rel="noopener noreferrer">
+            Provably fair
+          </a>
+        )}
         {canInstall && (
           <button
             onClick={() => {

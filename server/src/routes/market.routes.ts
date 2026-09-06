@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { priceFeed, TIMEFRAMES, type Timeframe } from '../services/prices.js';
+import { priceFeed, SYMBOL, TIMEFRAMES, type Timeframe } from '../services/prices.js';
 import { getNews } from '../services/news.js';
 import { ALLOWED_DURATIONS, multiplierFor } from '../services/trading.js';
 import { exposureGuard } from '../services/exposure.js';
@@ -10,8 +10,8 @@ export const marketRouter = Router();
 marketRouter.get('/quote', (_req, res) => {
   const stats = priceFeed.stats();
   res.json({
-    symbol: 'XAUUSD',
-    name: 'Gold / US Dollar',
+    symbol: SYMBOL,
+    name: env.symbolName,
     ...stats,
     ts: Date.now(),
     feed: priceFeed.health(),
@@ -27,7 +27,7 @@ marketRouter.get('/candles', (req, res) => {
     });
     return;
   }
-  res.json({ symbol: 'XAUUSD', timeframe: tf, candles: priceFeed.history(tf as Timeframe) });
+  res.json({ symbol: SYMBOL, timeframe: tf, candles: priceFeed.history(tf as Timeframe) });
 });
 
 marketRouter.get('/news', async (_req, res) => {
@@ -55,6 +55,9 @@ marketRouter.get('/config', (_req, res) => {
     turnoverMultiple: env.turnoverMultiple,
     minDeposit: env.minDeposit,
     minWithdrawal: env.minWithdrawal,
+    symbol: SYMBOL,
+    symbolName: env.symbolName,
+    provablyFair: env.priceMode === 'synthetic',
     supportTelegram: env.supportTelegram,
     demoStartingBalance: env.demoStartingBalance,
   });

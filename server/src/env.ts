@@ -38,7 +38,27 @@ export const env = {
   },
   paymentsMock: bool('PAYMENTS_MOCK', false),
 
-  priceMode: str('PRICE_MODE', 'live') as 'live' | 'simulated',
+  /**
+   * live      — poll a real XAU/USD quote and interpolate ticks between polls
+   * synthetic — deterministic, provably-fair instrument generated from a seed
+   * simulated — unseeded random walk, local development only
+   */
+  priceMode: str('PRICE_MODE', 'synthetic') as 'live' | 'synthetic' | 'simulated',
+  /** Instrument identity. A synthetic index must not wear a real market's name. */
+  symbol: str('MARKET_SYMBOL', 'FPX100'),
+  symbolName: str('MARKET_NAME', 'Fpesa Volatility 100'),
+  synth: {
+    basePrice: num('SYNTH_BASE_PRICE', 1000),
+    /** Fraction-of-price volatility per sqrt(second); matches the multiplier tuning. */
+    sigma: num('SYNTH_VOLATILITY', 0.00009),
+    /**
+     * Log drift per second. Should stay 0: margin belongs in the disclosed
+     * spread, not in a tilt hidden inside the price path. Whatever it is set
+     * to is published on the fairness endpoint.
+     */
+    drift: num('SYNTH_DRIFT', 0),
+    epochMs: num('SYNTH_EPOCH_MS', 300000),
+  },
   twelveDataKey: str('TWELVEDATA_API_KEY'),
 
   payoutRate: num('TRADE_PAYOUT_RATE', 0.87),

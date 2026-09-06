@@ -28,7 +28,7 @@ const TIMEFRAMES: Array<{ id: Timeframe; label: string; seconds: number }> = [
 type ViewMode = 'candles' | 'area';
 
 export function PriceChart(): JSX.Element {
-  const { price, tickDir, quote, openTrades, connected } = useApp();
+  const { price, tickDir, quote, openTrades, connected, config } = useApp();
   const [timeframe, setTimeframe] = useState<Timeframe>('5s');
   const [view, setView] = useState<ViewMode>('candles');
 
@@ -254,11 +254,11 @@ export function PriceChart(): JSX.Element {
       <div className="chart-head">
         <div className="chart-ident">
           <span className="chart-badge" aria-hidden="true">
-            🥇
+            📈
           </span>
           <div>
-            <div className="name">XAU/USD</div>
-            <div className="desc">Gold Spot · US Dollar</div>
+            <div className="name">{config.symbol}</div>
+            <div className="desc">{config.symbolName}</div>
           </div>
         </div>
 
@@ -304,7 +304,7 @@ export function PriceChart(): JSX.Element {
       <div className="feed-note">
         <span className={'feed-dot' + (connected ? '' : ' stale')} />
         {connected
-          ? 'Live feed connected · streaming XAU/USD'
+          ? 'Live feed connected · streaming ' + config.symbol
           : 'Reconnecting to the market feed…'}
       </div>
     </div>

@@ -117,6 +117,9 @@ export type PlatformConfig = {
   maxProfitMultiple: number;
   houseEdge: number;
   turnoverMultiple: number;
+  symbol: string;
+  symbolName: string;
+  provablyFair: boolean;
   desk: DeskState;
   minDeposit: number;
   minWithdrawal: number;

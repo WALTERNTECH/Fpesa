@@ -60,9 +60,38 @@ end without live IntaSend keys; requests settle themselves after six seconds.
 
 ---
 
+## The instrument
+
+The default instrument is **FPX100 (Fpesa Volatility 100)** — a synthetic index
+generated deterministically from a seed, not a feed of a real market. Every
+tick is:
+
+
+
+The SHA-256 of each epoch's seed is published **before** that epoch produces a
+tick; the seed itself is published once the epoch closes. Anyone can replay a
+closed epoch and confirm the prices they traded on:
+
+
+
+ carries the algorithm, the parameters (including drift —
+a tilt nobody can see is indistinguishable from a rigged feed), the open
+commitment, and the revealed seeds.  is the operator
+view: live parameters, current epoch, and the expected move per duration.
+
+**The honest limit:** the commitment stops outcomes being *altered*, not
+*known*. Whoever holds the live seed can compute the current epoch's remaining
+path, which is why epochs are short and the live seed is never served by any
+endpoint until its epoch closes. Treat it as a production secret.
+
+Setting  switches back to a real XAU/USD feed, which is not
+replayable —  says so rather than claiming a proof it cannot give.
+
+---
+
 ## The trading engine
 
-A trade is a short-duration leveraged position on XAU/USD. Profit tracks how far
+A trade is a short-duration leveraged position on the instrument above. Profit tracks how far
 the price actually moved — it is not a fixed win/lose amount.
 
 ```

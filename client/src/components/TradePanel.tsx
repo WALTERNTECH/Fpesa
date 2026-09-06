@@ -41,7 +41,7 @@ export function TradePanel(): JSX.Element {
         <div className="card-head">
           <div className="section-title">
             <span className="dot" />
-            Trade XAU/USD
+            Trade {config.symbol}
           </div>
           <span className="eyebrow">×{multiplier.toLocaleString('en-KE')}</span>
         </div>

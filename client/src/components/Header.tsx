@@ -28,7 +28,7 @@ export function Brand(): JSX.Element {
 export function Header(): JSX.Element {
   const {
     user, quote, price, tickDir, accountMode, setAccountMode,
-    openModal, logout, resetDemo,
+    openModal, logout, resetDemo, config,
   } = useApp();
   const { available: canInstall, canPrompt, install } = useInstall();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -71,8 +71,8 @@ export function Header(): JSX.Element {
         <Brand />
 
         {quote && (
-          <div className="header-quote" title="Gold spot vs US dollar">
-            <span className="sym">XAU/USD</span>
+          <div className="header-quote" title={config.symbolName}>
+            <span className="sym">{config.symbol}</span>
             <span className={'px tnum' + (tickDir ? ' tick-' + tickDir : '')}>
               {fmtPrice(price)}
             </span>

@@ -1,9 +1,10 @@
 import { env } from '../env.js';
+import { buildSyntheticEngine, type SyntheticEngine } from './synthetic.js';
 
 export type Tick = { symbol: string; price: number; ts: number };
 export type Candle = { time: number; open: number; high: number; low: number; close: number };
 
-export const SYMBOL = 'XAUUSD';
+export const SYMBOL = env.symbol;
 export const TIMEFRAMES = ['1s', '5s', '15s', '1m', '5m'] as const;
 export type Timeframe = (typeof TIMEFRAMES)[number];
 
@@ -59,8 +60,23 @@ class PriceFeed {
   private tickTimer: NodeJS.Timeout | null = null;
   private pollTimer: NodeJS.Timeout | null = null;
   private dayOpen = 0;
+  private synth: SyntheticEngine | null = null;
 
   async start(): Promise<void> {
+    if (env.priceMode === 'synthetic') {
+      // Deterministic instrument: no upstream to poll, nothing to anchor to.
+      this.synth = buildSyntheticEngine();
+      this.price = this.synth.current();
+      this.anchor = this.price;
+      this.anchored = true;
+      this.upstreamSource = 'synthetic';
+      this.dayOpen = this.price;
+      this.seedHistory();
+      this.tickTimer = setInterval(() => this.tick(), TICK_MS);
+      console.log('[prices] ' + SYMBOL + ' synthetic engine started at ' + this.price.toFixed(2));
+      return;
+    }
+
     // Retry before falling back. Starting on the fallback and correcting later
     // is the worst case for settlement, so it is worth a few seconds here.
     let seed: number | null = null;
@@ -120,6 +136,11 @@ class PriceFeed {
     return this.anchored || env.priceMode !== 'live';
   }
 
+  /** The synthetic engine, when one is running. Null in live/simulated mode. */
+  engine(): SyntheticEngine | null {
+    return this.synth;
+  }
+
   private async fetchUpstream(): Promise<number | null> {
     if (env.priceMode !== 'live') return null;
 
@@ -166,6 +187,16 @@ class PriceFeed {
 
   // ------------------------------------------------------------ tick engine
   private tick(): void {
+    if (this.synth) {
+      this.price = this.synth.next();
+      const t: Tick = { symbol: SYMBOL, price: this.price, ts: Date.now() };
+      this.applyToCandles(t);
+      for (const fn of this.listeners) {
+        try { fn(t); } catch { /* a bad subscriber must not stall the feed */ }
+      }
+      return;
+    }
+
     const dt = TICK_MS / 1000;
     const diffusion = this.price * SIGMA * Math.sqrt(dt) * gaussian();
     const reversion = (this.anchor - this.price) * THETA;

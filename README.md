@@ -191,6 +191,14 @@ So `TRADE_HOUSE_EDGE` is the only knob that should ever be reached for to change
 the take, and it should be set against **measured** churn, not a guess. Read the
 real figure from `GET /api/wallet/book` once there is real traffic.
 
+Retention therefore emerges from the ordinary mix of wins and losses: the edge
+acts on every trade, and nothing is ever withheld from a trader who is up.
+`WITHDRAWAL_TURNOVER_MULTIPLE` is **0 by default** for that reason — a winner
+can withdraw immediately, including on their very first trade. Set it to 1 only
+if deposit-then-withdraw cycling becomes a problem (any real trader clears 1×
+without noticing); higher values start holding genuine winnings, which costs
+more in chargebacks and reputation than it retains.
+
 `DAILY_PAYOUT_CAP_RATIO` (default 0.3) is a hard backstop on top: once net
 shillings paid to traders reach that share of the day's deposits, the desk
 stops opening **new** real positions and says so. It is a book control, not an

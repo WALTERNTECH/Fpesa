@@ -123,16 +123,20 @@ export const env = {
   dailyPayoutMinBase: num('DAILY_PAYOUT_MIN_DEPOSITS', 20000),
   /**
    * Staked volume a deposit must go through before it can be withdrawn, as a
-   * multiple of the deposit.
+   * multiple of the deposit. **Off by default.**
    *
-   * The house only earns on volume, so the share of a deposit retained is
-   * edge x turnover. Retaining 70% at the 6% edge therefore needs 0.70/0.06 =
-   * 11.7x. Deliberately a VOLUME multiple and not a trade count: twelve KSh 50
-   * trades on a KSh 2,600 deposit would satisfy a count while risking nothing.
+   * A lock is the wrong tool for setting retention here. Refusing to pay a
+   * trader who is up — on their first trade, having done nothing wrong — is
+   * the single fastest way to earn chargebacks, a BCLB complaint and a
+   * reputation that does not wash off. Retention comes from the edge instead,
+   * which acts on every trade without ever holding anyone's winnings.
    *
-   * Set to 0 to disable the requirement entirely.
+   * Set it to 1 if pure deposit-then-withdraw cycling becomes a problem: that
+   * requires the deposit to be traded once, which any real trader clears
+   * immediately, while stopping the wallet being used as a money conduit.
+   * Higher values start withholding genuine winnings again.
    */
-  turnoverMultiple: num('WITHDRAWAL_TURNOVER_MULTIPLE', 11.7),
+  turnoverMultiple: num('WITHDRAWAL_TURNOVER_MULTIPLE', 0),
   minStake: num('TRADE_MIN_STAKE', 50),
   maxStake: num('TRADE_MAX_STAKE', 20000),
   demoStartingBalance: num('DEMO_STARTING_BALANCE', 10000),

@@ -29,3 +29,29 @@ services:
         sync: false
       - key: PUBLIC_URL
         sync: false
+
+  # Operations console — separate service, separate origin, same database.
+  - type: web
+    name: fpesa-admin
+    runtime: node
+    region: frankfurt
+    plan: free
+    branch: main
+    buildCommand: npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: APP_MODE
+        value: admin
+      - key: UPSTREAM_URL
+        value: https://fpesa.onrender.com
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false

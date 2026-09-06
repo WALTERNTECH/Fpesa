@@ -21,6 +21,18 @@ export const env = {
   nodeEnv: str('NODE_ENV', 'development'),
   isProd: str('NODE_ENV', 'development') === 'production',
   port: num('PORT', 10000),
+  /**
+   * trader — the public trading app, price engine, sockets and settlement
+   * admin  — the operations console only, on its own origin
+   *
+   * The two run as separate Render services off one codebase. The admin one
+   * shares the database but never ships the trader bundle, runs no price
+   * engine of its own (two engines would generate two different markets), and
+   * issues its own session cookie scoped to its own host.
+   */
+  appMode: str('APP_MODE', 'trader') as 'trader' | 'admin',
+  /** Where the admin console reads live instrument and desk state from. */
+  upstreamUrl: str('UPSTREAM_URL', 'https://fpesa.onrender.com').replace(/\/+$/, ''),
   publicUrl: str('PUBLIC_URL', '').replace(/\/+$/, ''),
 
   supabaseUrl: str('SUPABASE_URL'),
@@ -128,6 +140,8 @@ export const env = {
   minWithdrawal: num('MIN_WITHDRAWAL', 100),
 
   supportTelegram: str('SUPPORT_TELEGRAM_URL', 'https://t.me/KRYPTONinv'),
+  /** Operations console origin, shown to admins in the account menu. */
+  adminUrl: str('ADMIN_URL', ''),
 };
 
 /** Fail fast on a misconfigured production deploy rather than 500ing later. */

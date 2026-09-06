@@ -64,6 +64,11 @@ function firstIssue(err: z.ZodError): string {
 }
 
 authRouter.post('/register', attemptLimiter, async (req, res) => {
+  // No sign-ups on the operations console; operator accounts are made by hand.
+  if (env.appMode === 'admin') {
+    res.status(404).json({ error: 'NOT_FOUND' });
+    return;
+  }
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'VALIDATION', message: firstIssue(parsed.error) });
@@ -147,7 +152,9 @@ authRouter.post('/login', attemptLimiter, async (req, res) => {
     ? await query.or('username.eq.' + identifier + ',phone.eq.' + asPhone).limit(1).maybeSingle()
     : await query.eq('username', identifier).maybeSingle();
 
-  const row = data as (Record<string, unknown> & { password_hash: string; is_active: boolean }) | null;
+  const row = data as (Record<string, unknown> & {
+    password_hash: string; is_active: boolean; is_admin: boolean;
+  }) | null;
 
   // Same response whether the account is missing or the password is wrong, so
   // the endpoint cannot be used to enumerate who has an account.
@@ -159,6 +166,15 @@ authRouter.post('/login', attemptLimiter, async (req, res) => {
   }
   const ok = await verifyPassword(parsed.data.password, row.password_hash);
   if (!ok || !row.is_active) {
+    res.status(401).json(invalid);
+    return;
+  }
+
+  // On the operations origin a trader account gets no session at all, rather
+  // than a session that every endpoint then has to refuse. Same response as a
+  // bad password, so the console cannot be used to test whether an account
+  // exists or whether it is an admin.
+  if (env.appMode === 'admin' && !row.is_admin) {
     res.status(401).json(invalid);
     return;
   }

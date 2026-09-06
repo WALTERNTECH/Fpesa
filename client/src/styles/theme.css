@@ -1478,3 +1478,19 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   .ad-body { padding: 18px 22px 24px; }
   .ad-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+
+/* An anchor styled to match the menu buttons around it. */
+.menu-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.menu-link.accent { color: var(--blue); font-weight: 600; }
+.menu-link:active { background: var(--surface); }
+@media (hover: hover) { .menu-link:hover { background: var(--blue-soft); } }

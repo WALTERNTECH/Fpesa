@@ -92,6 +92,7 @@ const DEFAULT_CONFIG: PlatformConfig = {
   symbol: 'FPX100',
   symbolName: 'Fpesa Volatility 100',
   provablyFair: true,
+  adminUrl: '',
   desk: { open: true, reason: null, ratio: 0, cap: 0.3, reopenAt: 0.24, minBase: 20000, armed: false },
   minDeposit: 50,
   minWithdrawal: 100,

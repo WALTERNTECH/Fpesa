@@ -16,6 +16,97 @@ adminRouter.use(requireAuth, (req, res, next) => {
   next();
 });
 
+type InstrumentView = {
+  symbol: string;
+  name: string;
+  mode: string;
+  price: number;
+  change: number;
+  changePct: number;
+  provablyFair: boolean;
+  epoch: number | null;
+  commitment: string | null;
+  params: { tickMs: number; epochMs: number; sigma: number; drift: number } | null;
+};
+
+type DeskView = {
+  open: boolean;
+  ratio: number;
+  cap: number;
+  reopenAt: number;
+  armed: boolean;
+  minBase: number;
+};
+
+/**
+ * The operations console runs no price engine of its own — a second engine
+ * would generate a second, different market — so it reads live instrument and
+ * desk state from the trading service instead. Book figures still come
+ * straight from the shared database, so they stay correct even if the trading
+ * service is unreachable.
+ */
+async function fromUpstream(): Promise<{
+  instrument: InstrumentView | null;
+  desk: DeskView | null;
+  ok: boolean;
+}> {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const [fairRes, cfgRes] = await Promise.all([
+      fetch(env.upstreamUrl + '/api/fairness', { signal: ctrl.signal }),
+      fetch(env.upstreamUrl + '/api/market/config', { signal: ctrl.signal }),
+    ]);
+    clearTimeout(timer);
+    if (!fairRes.ok || !cfgRes.ok) return { instrument: null, desk: null, ok: false };
+
+    const fair = (await fairRes.json()) as Record<string, never>;
+    const cfg = (await cfgRes.json()) as Record<string, never>;
+    const f = fair as unknown as {
+      symbol: string; name?: string; mode: string; provablyFair: boolean;
+      current?: { epoch: number; seedHash: string };
+      parameters?: { tickMs: number; epochMs: number; sigma: number; drift: number };
+    };
+    const c = cfg as unknown as {
+      symbol: string; symbolName: string;
+      desk: DeskView;
+    };
+
+    return {
+      ok: true,
+      instrument: {
+        symbol: f.symbol ?? c.symbol,
+        name: f.name ?? c.symbolName,
+        mode: f.mode,
+        price: 0, // filled from the quote below
+        change: 0,
+        changePct: 0,
+        provablyFair: Boolean(f.provablyFair),
+        epoch: f.current?.epoch ?? null,
+        commitment: f.current?.seedHash ?? null,
+        params: f.parameters ?? null,
+      },
+      desk: c.desk ?? null,
+    };
+  } catch {
+    return { instrument: null, desk: null, ok: false };
+  }
+}
+
+async function upstreamQuote(): Promise<{ price: number; change: number; changePct: number }> {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const res = await fetch(env.upstreamUrl + '/api/market/quote', { signal: ctrl.signal });
+    clearTimeout(timer);
+    if (!res.ok) return { price: 0, change: 0, changePct: 0 };
+    const q = (await res.json()) as { price: number; change: number; changePct: number };
+    return { price: q.price, change: q.change, changePct: q.changePct };
+  } catch {
+    return { price: 0, change: 0, changePct: 0 };
+  }
+}
+
 /**
  * Operator overview: the book, the float, and the shape of the instrument.
  *
@@ -34,15 +125,29 @@ adminRouter.get('/overview', async (_req, res) => {
     return;
   }
 
-  const engine = priceFeed.engine();
-  const quote = priceFeed.stats();
   const day = await exposureGuard.read(0);
+  const remote = env.appMode === 'admin';
 
-  res.json({
-    ...(data as Record<string, unknown>),
-    desk: exposureGuard.state(),
-    exposure: day,
-    instrument: {
+  let instrument: InstrumentView | null;
+  let desk: DeskView | null;
+  let upstreamOk = true;
+
+  if (remote) {
+    const up = await fromUpstream();
+    upstreamOk = up.ok;
+    desk = up.desk;
+    instrument = up.instrument;
+    if (instrument) {
+      const q = await upstreamQuote();
+      instrument.price = q.price;
+      instrument.change = q.change;
+      instrument.changePct = q.changePct;
+    }
+  } else {
+    const engine = priceFeed.engine();
+    const quote = priceFeed.stats();
+    const state = exposureGuard.state();
+    instrument = {
       symbol: SYMBOL,
       name: env.symbolName,
       mode: env.priceMode,
@@ -53,7 +158,30 @@ adminRouter.get('/overview', async (_req, res) => {
       epoch: engine ? engine.commitment().epoch : null,
       commitment: engine ? engine.commitment().seedHash : null,
       params: engine ? engine.params() : null,
+    };
+    desk = {
+      open: state.open,
+      ratio: state.ratio,
+      cap: state.cap,
+      reopenAt: state.reopenAt,
+      armed: state.armed,
+      minBase: state.minBase,
+    };
+  }
+
+  const sigma = instrument?.params?.sigma ?? null;
+  const price = instrument?.price ?? 0;
+
+  res.json({
+    ...(data as Record<string, unknown>),
+    desk: desk ?? {
+      open: true, ratio: day.payoutRatio, cap: env.dailyPayoutCap,
+      reopenAt: env.dailyPayoutCap * env.dailyPayoutReopenFactor,
+      armed: day.deposits >= env.dailyPayoutMinBase, minBase: env.dailyPayoutMinBase,
     },
+    exposure: day,
+    instrument,
+    upstream: remote ? { ok: upstreamOk, url: env.upstreamUrl } : undefined,
     settings: {
       houseEdge: env.houseEdge,
       turnoverMultiple: env.turnoverMultiple,
@@ -73,23 +201,22 @@ adminRouter.get('/overview', async (_req, res) => {
      * the stop-out figure is how far price must run to wipe a stake at that
      * duration's multiplier.
      */
-    distribution: engine
-      ? ALLOWED_DURATIONS.map((d) => {
-          const sigma = engine.params().sigma * Math.sqrt(d);
-          const mult = multiplierFor(d);
-          return {
-            duration: d,
-            multiplier: mult,
-            oneSigmaPct: Number((sigma * 100).toFixed(4)),
-            oneSigmaPrice: Number((quote.price * sigma).toFixed(2)),
-            /** Fraction of stake a 1-sigma move is worth at this multiplier. */
-            oneSigmaStakePct: Number((sigma * mult * 100).toFixed(1)),
-            stopOutMovePct: Number(((1 / mult) * 100).toFixed(4)),
-            /** Roughly how often a position is wiped out, two-tailed normal. */
-            stopOutOdds: Number((2 * (1 - normalCdf(1 / (sigma * mult))) * 100).toFixed(2)),
-          };
-        })
-      : null,
+    distribution:
+      sigma === null
+        ? null
+        : ALLOWED_DURATIONS.map((d) => {
+            const s = sigma * Math.sqrt(d);
+            const mult = multiplierFor(d);
+            return {
+              duration: d,
+              multiplier: mult,
+              oneSigmaPct: Number((s * 100).toFixed(4)),
+              oneSigmaPrice: Number((price * s).toFixed(2)),
+              oneSigmaStakePct: Number((s * mult * 100).toFixed(1)),
+              stopOutMovePct: Number(((1 / mult) * 100).toFixed(4)),
+              stopOutOdds: Number((2 * (1 - normalCdf(1 / (s * mult))) * 100).toFixed(2)),
+            };
+          }),
   });
 });
 

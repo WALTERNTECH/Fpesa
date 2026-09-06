@@ -158,20 +158,20 @@ export function Header(): JSX.Element {
                     Reset demo balance
                   </button>
 
-                  {user.isAdmin && (
+                  {user.isAdmin && config.adminUrl && (
                     <>
                       <div className="menu-sep" />
-                      <button
+                      <a
                         role="menuitem"
-                        className="accent"
-                        onClick={() => {
-                          window.dispatchEvent(new Event('fpesa:admin'));
-                          setMenuOpen(false);
-                        }}
+                        className="menu-link accent"
+                        href={config.adminUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setMenuOpen(false)}
                       >
                         <IconChart size={15} />
-                        Operator dashboard
-                      </button>
+                        Operations console
+                      </a>
                     </>
                   )}
 

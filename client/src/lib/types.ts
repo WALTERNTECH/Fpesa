@@ -120,6 +120,7 @@ export type PlatformConfig = {
   symbol: string;
   symbolName: string;
   provablyFair: boolean;
+  adminUrl: string;
   desk: DeskState;
   minDeposit: number;
   minWithdrawal: number;

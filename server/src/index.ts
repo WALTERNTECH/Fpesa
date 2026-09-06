@@ -23,7 +23,10 @@ import { fairnessRouter } from './routes/fairness.routes.js';
 import { adminRouter } from './routes/admin.routes.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const clientDist = path.resolve(here, '../../client/dist');
+const isAdmin = env.appMode === 'admin';
+// The admin console is a different bundle on a different host; the trader
+// bundle is never served from it and vice versa.
+const clientDist = path.resolve(here, isAdmin ? '../../client-admin/dist' : '../../client/dist');
 
 async function main(): Promise<void> {
   assertEnv();
@@ -70,13 +73,19 @@ async function main(): Promise<void> {
   });
 
   app.use('/api/auth', authRouter);
-  app.use('/api/market', marketRouter);
-  app.use('/api/trades', tradeRouter);
-  app.use('/api/wallet', walletRouter);
-  app.use('/api/social', socialRouter);
-  app.use('/api/webhooks', webhookRouter);
-  app.use('/api/fairness', fairnessRouter);
-  app.use('/api/admin', adminRouter);
+  if (isAdmin) {
+    // Operations console: the trading, wallet, social and webhook surfaces are
+    // not mounted at all, so a stolen admin session cannot reach them and the
+    // payment callback has exactly one address in the world.
+    app.use('/api/admin', adminRouter);
+  } else {
+    app.use('/api/market', marketRouter);
+    app.use('/api/trades', tradeRouter);
+    app.use('/api/wallet', walletRouter);
+    app.use('/api/social', socialRouter);
+    app.use('/api/webhooks', webhookRouter);
+    app.use('/api/fairness', fairnessRouter);
+  }
 
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'NOT_FOUND', message: 'Unknown endpoint.' });
@@ -123,15 +132,20 @@ async function main(): Promise<void> {
 
   const server = createServer(app);
 
-  await priceFeed.start();
-  hub.attach(server);
-  await tradingEngine.start();
-  primeNews();
-  startReconciliation();
-  exposureGuard.start();
+  if (!isAdmin) {
+    await priceFeed.start();
+    hub.attach(server);
+    await tradingEngine.start();
+    primeNews();
+    startReconciliation();
+    exposureGuard.start();
+  }
 
   server.listen(env.port, () => {
-    console.log('[fpesa] listening on port ' + env.port + ' (' + env.nodeEnv + ')');
+    console.log(
+      '[fpesa] ' + (isAdmin ? 'operations console' : 'trading app') +
+      ' listening on port ' + env.port + ' (' + env.nodeEnv + ')'
+    );
   });
 
   const shutdown = (signal: string): void => {

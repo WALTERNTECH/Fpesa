@@ -180,11 +180,6 @@ adminRouter.get('/overview', async (_req, res) => {
       armed: day.deposits >= env.dailyPayoutMinBase, minBase: env.dailyPayoutMinBase,
     },
     exposure: day,
-    // Live directional risk on the open book, and what each move does to it.
-    live: await liveExposure(instrument?.price ?? 0),
-    // The admin chart streams from the trading service, so it plots exactly
-    // the same series the traders are looking at.
-    feedOrigin: env.appMode === 'admin' ? env.upstreamUrl : '',
     instrument,
     upstream: remote ? { ok: upstreamOk, url: env.upstreamUrl } : undefined,
     settings: {

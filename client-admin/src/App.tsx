@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Chart, type Marker } from './Chart';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 
 /* ---------------------------------------------------------------- types */
 type Overview = {
@@ -36,12 +35,6 @@ type Overview = {
     oneSigmaStakePct: number; stopOutMovePct: number; stopOutOdds: number;
   }> | null;
   upstream?: { ok: boolean; url: string };
-  feedOrigin?: string;
-  live: {
-    openCount: number; buyStake: number; sellStake: number; netBias: number;
-    worstCase: number;
-    ladder: Array<{ movePct: number; priceAt: number; housePnl: number }>;
-  } | null;
 };
 
 /* --------------------------------------------------------------- helpers */
@@ -146,28 +139,6 @@ function Dashboard({ onOut }: { onOut: () => void }): JSX.Element {
     return () => window.clearInterval(id);
   }, [load]);
 
-  // Price levels from the open book, drawn on the chart. Rebuilt only when the
-  // position count or price actually changes, so the chart is not thrashed on
-  // every fifteen-second poll.
-  const markers = useMemo<Marker[]>(() => {
-    if (!d?.live || d.live.openCount === 0) return [];
-    const out: Marker[] = [];
-    if (d.live.buyStake > 0) {
-      out.push({ price: d.instrument.price, label: 'spot', colour: '#0b4fd8' });
-    }
-    for (const l of d.live.ladder) {
-      if (l.movePct === 0) continue;
-      if (Math.abs(l.movePct) !== 0.1) continue;
-      out.push({
-        price: l.priceAt,
-        label: (l.housePnl >= 0 ? '+' : '') + Math.round(l.housePnl),
-        colour: l.housePnl >= 0 ? '#00a870' : '#e5384a',
-        dashed: true,
-      });
-    }
-    return out;
-  }, [d?.live, d?.instrument.price]);
-
   return (
     <>
       <header className="top">
@@ -200,57 +171,6 @@ function Dashboard({ onOut }: { onOut: () => void }): JSX.Element {
                 figures below are unavailable. Book figures come from the database and are
                 still accurate.
               </div>
-            )}
-
-            <section>
-              <h2>{d.instrument.symbol} · live</h2>
-              <Chart origin={d.feedOrigin || ''} markers={markers} />
-              <p className="note nomargin" style={{ marginTop: 10 }}>
-                The same series the traders are watching, streamed from the trading service.
-                The lines are your own book — where open positions were entered and where
-                they stop out. Nothing here predicts direction: the path is a driftless
-                random walk, so no indicator computed from it beats a coin flip.
-              </p>
-            </section>
-
-            {d.live && (
-              <section>
-                <h2>Live risk on the open book</h2>
-                <div className="grid">
-                  <Stat k="Open positions" v={String(d.live.openCount)} />
-                  <Stat k="Stake on Buy" v={ksh(d.live.buyStake)} />
-                  <Stat k="Stake on Sell" v={ksh(d.live.sellStake)} />
-                  <Stat
-                    k={d.live.netBias >= 0 ? 'Net long by traders' : 'Net short by traders'}
-                    v={ksh(Math.abs(d.live.netBias))}
-                    tone={d.live.netBias === 0 ? undefined : 'down'}
-                  />
-                </div>
-                <div className="tw" style={{ marginTop: 10 }}>
-                  <table>
-                    <thead>
-                      <tr><th>If price moves</th><th>To</th><th>House P&amp;L</th></tr>
-                    </thead>
-                    <tbody>
-                      {d.live.ladder.map((l) => (
-                        <tr key={l.movePct}>
-                          <td>{l.movePct > 0 ? '+' : ''}{l.movePct.toFixed(3)}%</td>
-                          <td>{l.priceAt.toFixed(2)}</td>
-                          <td className={l.housePnl >= 0 ? 'up' : 'down'}>
-                            {l.housePnl >= 0 ? '+' : '−'}{ksh(Math.abs(l.housePnl))}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="note">
-                  This is the operator's real signal — not where price is going, but where
-                  you are exposed if it goes there. Traders net long means the house is
-                  short: a rally is what costs you. Worst case on the open book right now is{' '}
-                  <b>{ksh(Math.abs(d.live.worstCase))}</b>.
-                </p>
-              </section>
             )}
 
             <section>

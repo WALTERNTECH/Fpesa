@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useApp } from '../store/app';
 import { ksh, durationLabel } from '../lib/format';
 import { OpenPositions } from './OpenPositions';
+import { TradeAnalyser } from './TradeAnalyser';
 import { IconArrowDown, IconArrowUp } from './Icons';
 
 export function TradePanel(): JSX.Element {
@@ -155,6 +156,8 @@ export function TradePanel(): JSX.Element {
               </span>
             </div>
           </div>
+
+          <TradeAnalyser />
 
           {/* Hidden on phones, where the sticky bar carries these instead so the
               chart stays on screen while the trade is placed. */}

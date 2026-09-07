@@ -182,7 +182,6 @@ export type PlatformConfig = {
   symbolName: string;
   instruments: Instrument[];
   provablyFair: boolean;
-  adminUrl: string;
   desk: DeskState;
   minDeposit: number;
   /** 0 means no ceiling of ours — see the server's env.ts. */

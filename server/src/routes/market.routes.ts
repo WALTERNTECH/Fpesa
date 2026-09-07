@@ -157,7 +157,6 @@ marketRouter.get('/config', (_req, res) => {
     symbol: SYMBOL,
     symbolName: getInstrument(SYMBOL)?.name ?? env.symbolName,
     provablyFair: env.priceMode === 'synthetic',
-    adminUrl: env.adminUrl,
     supportTelegram: env.supportTelegram,
     demoStartingBalance: env.demoStartingBalance,
   });

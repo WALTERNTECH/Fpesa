@@ -10,7 +10,6 @@ import {
   IconDownload,
   IconLogout,
   IconRefresh,
-  IconChart,
 } from './Icons';
 
 export function Brand(): JSX.Element {
@@ -170,23 +169,6 @@ export function Header(): JSX.Element {
                     <IconRefresh size={15} />
                     Reset demo balance
                   </button>
-
-                  {user.isAdmin && config.adminUrl && (
-                    <>
-                      <div className="menu-sep" />
-                      <a
-                        role="menuitem"
-                        className="menu-link accent"
-                        href={config.adminUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() => setMenuOpen(false)}
-                      >
-                        <IconChart size={15} />
-                        Operations console
-                      </a>
-                    </>
-                  )}
 
                   {canInstall && (
                     <>

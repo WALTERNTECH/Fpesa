@@ -111,7 +111,6 @@ const DEFAULT_CONFIG: PlatformConfig = {
   symbolName: 'Volatility 100 Index',
   instruments: [],
   provablyFair: true,
-  adminUrl: '',
   desk: { open: true, reason: null, ratio: 0, cap: 0.3, reopenAt: 0.24, minBase: 20000, armed: false },
   minDeposit: 50,
   maxDeposit: 0,

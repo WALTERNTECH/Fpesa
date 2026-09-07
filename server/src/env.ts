@@ -167,8 +167,6 @@ export const env = {
   maxWithdrawal: num('MAX_WITHDRAWAL', 250000),
 
   supportTelegram: str('SUPPORT_TELEGRAM_URL', 'https://t.me/KRYPTONinv'),
-  /** Operations console origin, shown to admins in the account menu. */
-  adminUrl: str('ADMIN_URL', ''),
 };
 
 /** Fail fast on a misconfigured production deploy rather than 500ing later. */

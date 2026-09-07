@@ -444,6 +444,7 @@ class TradingEngine {
       // Checked inside the same transaction that debits the balance, so two
       // trades arriving together cannot both pass a limit only one fits in.
       p_operator_float: env.operatorFloat,
+      p_position_share: env.maxPositionShare,
     });
 
     if (error) {

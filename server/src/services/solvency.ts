@@ -71,7 +71,10 @@ class SolvencyView {
    */
   maxLiveStake(headroom = this.cached.headroom): number {
     if (env.maxProfitMultiple <= 0) return env.maxStake;
-    const affordable = Math.floor(headroom / env.maxProfitMultiple);
+    // A position may only take a share of the book, so the ceiling is measured
+    // against that share rather than the whole of headroom.
+    const room = Math.max(0, headroom) * env.maxPositionShare;
+    const affordable = Math.floor(room / env.maxProfitMultiple);
     return Math.max(0, Math.min(env.maxStake, affordable));
   }
 }

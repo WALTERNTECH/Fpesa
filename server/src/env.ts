@@ -146,7 +146,7 @@ export const env = {
   minStake: num('TRADE_MIN_STAKE', 50),
   maxStake: num('TRADE_MAX_STAKE', 1000000),
   demoStartingBalance: num('DEMO_STARTING_BALANCE', 10000),
-  minDeposit: num('MIN_DEPOSIT', 50),
+  minDeposit: num('MIN_DEPOSIT', 1000),
   /**
    * Ceiling on a single deposit. **0 means no ceiling of ours.**
    *
@@ -185,6 +185,22 @@ export const env = {
    * Set it to the amount actually sitting in the payout account.
    */
   operatorFloat: num('OPERATOR_FLOAT', 0),
+  /**
+   * The largest share of the book's headroom a single position may consume.
+   *
+   * The solvency guard alone already keeps every win payable — a run of wins
+   * throttles itself, because each win shrinks the headroom the next position
+   * is measured against. What it does not do is stop one trader taking the
+   * whole of that capacity with them: seven straight maximum wins from a
+   * KSh 1,000 deposit ends with the book covered to within one shilling and
+   * every other trader refused until that money leaves or loses.
+   *
+   * At 0.25 no single position can hold more than a quarter of the house's
+   * capacity, so a hot streak stays payable and the desk stays open to
+   * everyone else. Raise it toward 1 to allow bigger individual positions at
+   * the cost of that protection.
+   */
+  maxPositionShare: num('MAX_POSITION_SHARE', 0.25),
 
   supportTelegram: str('SUPPORT_TELEGRAM_URL', 'https://t.me/KRYPTONinv'),
 };

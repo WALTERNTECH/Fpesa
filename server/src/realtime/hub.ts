@@ -3,11 +3,13 @@ import type { Server } from 'node:http';
 import jwt from 'jsonwebtoken';
 import { env } from '../env.js';
 import { SESSION_COOKIE } from '../lib/auth.js';
-import { priceFeed } from '../services/prices.js';
+import { priceFeed, SYMBOL } from '../services/prices.js';
 
 type Client = WebSocket & {
   userId?: string;
   isAlive?: boolean;
+  /** Which instrument's ticks this socket wants. */
+  watching?: string;
 };
 
 /** Pulls the Fpesa session out of an upgrade request's Cookie header. */
@@ -68,14 +70,15 @@ class Hub {
       });
 
       socket.on('message', (raw) => {
-        let msg: { type?: string; token?: string };
+        let msg: { type?: string; token?: string; symbol?: string };
         try {
-          msg = JSON.parse(String(raw)) as { type?: string; token?: string };
+          msg = JSON.parse(String(raw)) as { type?: string; token?: string; symbol?: string };
         } catch {
           return;
         }
-        // The only thing a client may tell us over the socket is who it is.
-        // Everything that changes state goes through the authenticated REST API.
+        // A client may tell us two things over the socket: who it is, and which
+        // market it is looking at. Everything that changes state — money above
+        // all — goes through the authenticated REST API.
         if (msg.type === 'auth' && typeof msg.token === 'string') {
           try {
             const payload = jwt.verify(msg.token, env.jwtSecret) as { sub?: string };
@@ -83,6 +86,15 @@ class Hub {
           } catch {
             socket.userId = undefined;
           }
+          return;
+        }
+        if (msg.type === 'watch' && typeof msg.symbol === 'string') {
+          // Unknown symbols are ignored rather than errored: the socket carries
+          // no authority, so the worst a bad value can do is show nothing.
+          if (!priceFeed.has(msg.symbol)) return;
+          socket.watching = msg.symbol;
+          const t = priceFeed.current(msg.symbol);
+          this.send(socket, { type: 'tick', symbol: t.symbol, price: t.price, ts: t.ts });
         }
       });
 
@@ -119,8 +131,23 @@ class Hub {
       this.broadcast({ type: 'presence', online: this.clients.size });
     }, 15_000);
 
+    // Five instruments at four ticks a second is twenty messages a second per
+    // client if every tick goes everywhere. A socket only receives the market
+    // it is actually displaying; positions on the others still settle, because
+    // settlement watches the feed directly rather than the socket.
     priceFeed.subscribe((tick) => {
-      this.broadcast({ type: 'tick', symbol: tick.symbol, price: tick.price, ts: tick.ts });
+      const payload = JSON.stringify({
+        type: 'tick', symbol: tick.symbol, price: tick.price, ts: tick.ts,
+      });
+      for (const socket of this.clients) {
+        if (socket.readyState !== WebSocket.OPEN) continue;
+        if ((socket.watching ?? SYMBOL) !== tick.symbol) continue;
+        try {
+          socket.send(payload);
+        } catch {
+          this.clients.delete(socket);
+        }
+      }
     });
   }
 

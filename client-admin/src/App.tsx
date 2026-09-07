@@ -119,6 +119,7 @@ function Stat({ k, v, tone }: { k: string; v: string; tone?: 'up' | 'down' }): J
 }
 
 function Dashboard({ onOut }: { onOut: () => void }): JSX.Element {
+  const [tab, setTab] = useState<'book' | 'accounts'>('book');
   const [d, setD] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [at, setAt] = useState<Date | null>(null);
@@ -133,11 +134,14 @@ function Dashboard({ onOut }: { onOut: () => void }): JSX.Element {
     }
   }, []);
 
+  // The overview polls every 15s; there is no reason to keep hitting it while
+  // the operator is working on an account.
   useEffect(() => {
+    if (tab !== 'book') return;
     void load();
     const id = window.setInterval(() => void load(), 15000);
     return () => window.clearInterval(id);
-  }, [load]);
+  }, [load, tab]);
 
   return (
     <>
@@ -146,8 +150,12 @@ function Dashboard({ onOut }: { onOut: () => void }): JSX.Element {
           Fpesa <span>Operations</span>
         </div>
         <div className="top-right">
-          {at && <span className="top-at">updated {at.toLocaleTimeString('en-KE')}</span>}
-          <button className="btn ghost" onClick={() => void load()}>Refresh</button>
+          {tab === 'book' && at && (
+            <span className="top-at">updated {at.toLocaleTimeString('en-KE')}</span>
+          )}
+          {tab === 'book' && (
+            <button className="btn ghost" onClick={() => void load()}>Refresh</button>
+          )}
           <button
             className="btn ghost"
             onClick={() => {
@@ -160,10 +168,17 @@ function Dashboard({ onOut }: { onOut: () => void }): JSX.Element {
       </header>
 
       <main className="wrap">
-        {error && <div className="err">{error}</div>}
-        {!d && !error && <div className="muted">Loading…</div>}
+        <nav className="tabs">
+          <button aria-pressed={tab === 'book'} onClick={() => setTab('book')}>The book</button>
+          <button aria-pressed={tab === 'accounts'} onClick={() => setTab('accounts')}>Accounts</button>
+        </nav>
 
-        {d && (
+        {tab === 'accounts' && <Accounts />}
+
+        {tab === 'book' && error && <div className="err">{error}</div>}
+        {tab === 'book' && !d && !error && <div className="muted">Loading…</div>}
+
+        {tab === 'book' && d && (
           <>
             {d.upstream && !d.upstream.ok && (
               <div className="warn">
@@ -300,6 +315,292 @@ function Dashboard({ onOut }: { onOut: () => void }): JSX.Element {
           </>
         )}
       </main>
+    </>
+  );
+}
+
+
+/* -------------------------------------------------------------- accounts */
+type Account = {
+  id: string; username: string; phone: string;
+  demoBalance: number; realBalance: number;
+  isAdmin: boolean; isActive: boolean; createdAt: string; lastSeenAt: string;
+};
+
+type AccountDetail = {
+  user: Account;
+  statement: Record<string, string | number> | null;
+  transactions: Array<{
+    id: string; kind: string; amount: string | number; status: string;
+    reference: string; mpesa_receipt: string | null; result_code: string | null;
+    result_desc: string | null; created_at: string;
+  }>;
+  adjustments: Array<{
+    id: string; account_mode: string; amount: string | number;
+    balance_before: string | number; balance_after: string | number;
+    reason: string; created_at: string;
+  }>;
+};
+
+/**
+ * Account lookup and manual balance correction.
+ *
+ * The reason this screen exists is failed deposits: the STK push succeeds on
+ * the customer's phone, the callback never lands, and the money is real but the
+ * balance is not. Someone has to be able to put it right.
+ *
+ * The reason it looks like this — reason mandatory, a confirmation step before
+ * it fires, every past adjustment listed underneath — is that the same button
+ * can mint balance out of nothing. Making the trail unavoidable is what
+ * separates an operations tool from an unaudited key to the float.
+ */
+function Accounts(): JSX.Element {
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState<Account[] | null>(null);
+  const [detail, setDetail] = useState<AccountDetail | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const [mode, setMode] = useState<'real' | 'demo'>('real');
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const [confirming, setConfirming] = useState(false);
+
+  const search = async (e: FormEvent): Promise<void> => {
+    e.preventDefault();
+    if (q.trim().length < 2) {
+      setError('Enter at least two characters.');
+      return;
+    }
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      const res = await call<{ users: Account[] }>('/admin/users?q=' + encodeURIComponent(q.trim()));
+      setResults(res.users);
+      setDetail(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Search failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const open = async (id: string): Promise<void> => {
+    setBusy(true); setError(null);
+    try {
+      setDetail(await call<AccountDetail>('/admin/users/' + id));
+      setAmount(''); setReason(''); setConfirming(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load the account.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const value = Number(amount);
+  const target = detail?.user;
+  const current = target ? (mode === 'real' ? target.realBalance : target.demoBalance) : 0;
+  const after = current + (Number.isFinite(value) ? value : 0);
+  const valid = Boolean(target) && Number.isFinite(value) && value !== 0 &&
+    reason.trim().length >= 3 && after >= 0;
+
+  const apply = async (): Promise<void> => {
+    if (!target || !valid) return;
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      const res = await call<{ before: number; after: number; mode: string }>(
+        '/admin/users/' + target.id + '/balance',
+        { amount: value, mode, reason: reason.trim() }
+      );
+      setNotice(
+        target.username + ': ' + res.mode + ' balance ' + ksh(res.before) +
+        ' to ' + ksh(res.after)
+      );
+      setAmount(''); setReason(''); setConfirming(false);
+      await open(target.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not adjust the balance.');
+      setConfirming(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <section>
+        <h2>Find an account</h2>
+        <form className="search" onSubmit={(e) => void search(e)}>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Username or phone number"
+            aria-label="Search accounts"
+          />
+          <button className="btn" type="submit" disabled={busy}>Search</button>
+        </form>
+
+        {error && <div className="err">{error}</div>}
+        {notice && <div className="ok">{notice}</div>}
+
+        {results && results.length === 0 && <p className="muted">No accounts matched.</p>}
+        {results && results.length > 0 && (
+          <div className="tw">
+            <table>
+              <thead>
+                <tr><th>Username</th><th>Phone</th><th>Live</th><th>Demo</th><th /></tr>
+              </thead>
+              <tbody>
+                {results.map((u) => (
+                  <tr key={u.id}>
+                    <td>{u.username}{u.isAdmin && <span className="pill">admin</span>}</td>
+                    <td>{u.phone}</td>
+                    <td>{ksh(u.realBalance)}</td>
+                    <td>{ksh(u.demoBalance)}</td>
+                    <td>
+                      <button className="btn ghost sm" onClick={() => void open(u.id)}>Open</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {target && detail && (
+        <>
+          <section>
+            <h2>{target.username}</h2>
+            <div className="grid">
+              <Stat k="Live balance" v={ksh(target.realBalance)} />
+              <Stat k="Demo balance" v={ksh(target.demoBalance)} />
+              <Stat k="Deposited" v={ksh(Number(detail.statement?.deposits ?? 0))} />
+              <Stat k="Withdrawn" v={ksh(Number(detail.statement?.withdrawals ?? 0))} />
+            </div>
+            <p className="note nomargin">
+              {target.phone} · joined {new Date(target.createdAt).toLocaleDateString('en-KE')} ·
+              last seen {ago(target.lastSeenAt)} ago
+            </p>
+          </section>
+
+          <section>
+            <h2>Adjust balance</h2>
+            <div className="adjust">
+              <div className="row">
+                <label>
+                  Account
+                  <select
+                    value={mode}
+                    onChange={(e) => { setMode(e.target.value as 'real' | 'demo'); setConfirming(false); }}
+                  >
+                    <option value="real">Live</option>
+                    <option value="demo">Demo</option>
+                  </select>
+                </label>
+                <label>
+                  Amount (negative to debit)
+                  <input
+                    type="number"
+                    value={amount}
+                    onChange={(e) => { setAmount(e.target.value); setConfirming(false); }}
+                    placeholder="e.g. 2000 or -500"
+                  />
+                </label>
+              </div>
+              <label>
+                Reason (stored against the adjustment)
+                <input
+                  value={reason}
+                  onChange={(e) => { setReason(e.target.value); setConfirming(false); }}
+                  placeholder="e.g. STK push debited but the callback never arrived"
+                />
+              </label>
+
+              {Number.isFinite(value) && value !== 0 && (
+                <p className={'preview' + (after < 0 ? ' bad' : '')}>
+                  {mode === 'real' ? 'Live' : 'Demo'} balance {ksh(current)} to <b>{ksh(after)}</b>
+                  {after < 0 && ' — a debit cannot take the balance below zero.'}
+                </p>
+              )}
+
+              {!confirming ? (
+                <button className="btn" disabled={!valid || busy} onClick={() => setConfirming(true)}>
+                  Review adjustment
+                </button>
+              ) : (
+                <div className="confirm">
+                  <p>
+                    {value > 0 ? 'Credit' : 'Debit'} <b>{ksh(Math.abs(value))}</b>{' '}
+                    {value > 0 ? 'to' : 'from'} <b>{target.username}</b> on the{' '}
+                    {mode === 'real' ? 'live' : 'demo'} balance. This is recorded against your
+                    account{mode === 'real' ? ' and appears in their own statement.' : '.'}
+                  </p>
+                  <div className="row">
+                    <button className="btn" disabled={busy} onClick={() => void apply()}>
+                      {busy ? 'Applying…' : 'Confirm'}
+                    </button>
+                    <button className="btn ghost" disabled={busy} onClick={() => setConfirming(false)}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section>
+            <h2>Money movements</h2>
+            <div className="tw">
+              <table>
+                <thead>
+                  <tr><th>When</th><th>Kind</th><th>Amount</th><th>Status</th><th>Reference</th></tr>
+                </thead>
+                <tbody>
+                  {detail.transactions.length === 0 && (
+                    <tr><td colSpan={5} className="muted">Nothing yet.</td></tr>
+                  )}
+                  {detail.transactions.map((t) => (
+                    <tr key={t.id}>
+                      <td>{ago(t.created_at)} ago</td>
+                      <td>{t.kind === 'ADJUSTMENT' ? 'Manual ' + (t.result_code ?? '') : t.kind}</td>
+                      <td>{ksh(Number(t.amount))}</td>
+                      <td>{t.status}</td>
+                      <td className="ref">{t.mpesa_receipt ?? t.reference}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {detail.adjustments.length > 0 && (
+            <section>
+              <h2>Manual adjustments on this account</h2>
+              <div className="tw">
+                <table>
+                  <thead>
+                    <tr><th>When</th><th>Account</th><th>Amount</th><th>Balance</th><th>Reason</th></tr>
+                  </thead>
+                  <tbody>
+                    {detail.adjustments.map((a) => (
+                      <tr key={a.id}>
+                        <td>{ago(a.created_at)} ago</td>
+                        <td>{a.account_mode}</td>
+                        <td className={Number(a.amount) >= 0 ? 'up' : 'down'}>
+                          {Number(a.amount) >= 0 ? '+' : '−'}{ksh(Math.abs(Number(a.amount)))}
+                        </td>
+                        <td>{ksh(Number(a.balance_before))} to {ksh(Number(a.balance_after))}</td>
+                        <td>{a.reason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+        </>
+      )}
     </>
   );
 }

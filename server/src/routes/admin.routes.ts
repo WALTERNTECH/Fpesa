@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { env } from '../env.js';
-import { db } from '../lib/db.js';
+import { db, pgErrorCode } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
+import { hub } from '../realtime/hub.js';
 import { exposureGuard } from '../services/exposure.js';
 import { priceFeed, SYMBOL } from '../services/prices.js';
 import { ALLOWED_DURATIONS, multiplierFor } from '../services/trading.js';
@@ -301,6 +302,223 @@ async function liveExposure(price: number): Promise<{
     ladder,
   };
 }
+
+// ------------------------------------------------------------ user accounts
+
+/**
+ * Account lookup. Deliberately requires a search term rather than listing
+ * everyone: an operator adjusting one balance should be looking at one account,
+ * and an endpoint that dumps the whole customer book is a much bigger thing to
+ * leave lying behind a session cookie.
+ */
+adminRouter.get('/users', async (req, res) => {
+  const q = String(req.query.q ?? '').trim();
+  if (q.length < 2) {
+    res.status(400).json({
+      error: 'QUERY_TOO_SHORT',
+      message: 'Enter at least two characters of a username or phone number.',
+    });
+    return;
+  }
+
+  const { data, error } = await db
+    .from('users')
+    .select('id, username, phone, demo_balance, real_balance, is_admin, is_active, created_at, last_seen_at')
+    .or('username.ilike.%' + q + '%,phone.ilike.%' + q + '%')
+    .order('created_at', { ascending: false })
+    .limit(25);
+
+  if (error) {
+    console.error('[admin] user search failed:', error.message);
+    res.status(500).json({ error: 'LOAD_FAILED', message: 'Could not search accounts.' });
+    return;
+  }
+
+  res.json({
+    users: ((data ?? []) as Array<Record<string, unknown>>).map((u) => ({
+      id: u.id,
+      username: u.username,
+      phone: u.phone,
+      demoBalance: Number(u.demo_balance),
+      realBalance: Number(u.real_balance),
+      isAdmin: Boolean(u.is_admin),
+      isActive: Boolean(u.is_active),
+      createdAt: u.created_at,
+      lastSeenAt: u.last_seen_at,
+    })),
+  });
+});
+
+/** One account in full, with its recent money movements and adjustments. */
+adminRouter.get('/users/:id', async (req, res) => {
+  const [userRes, txRes, adjRes, stmtRes] = await Promise.all([
+    db.from('users')
+      .select('id, username, phone, demo_balance, real_balance, is_admin, is_active, created_at, last_seen_at')
+      .eq('id', req.params.id)
+      .maybeSingle(),
+    db.from('transactions')
+      .select('id, kind, amount, status, reference, mpesa_receipt, result_code, result_desc, created_at')
+      .eq('user_id', req.params.id)
+      .order('created_at', { ascending: false })
+      .limit(25),
+    db.from('admin_adjustments')
+      .select('id, account_mode, amount, balance_before, balance_after, reason, created_at, admin_id')
+      .eq('user_id', req.params.id)
+      .order('created_at', { ascending: false })
+      .limit(25),
+    db.rpc('fpesa_user_statement', { p_user: req.params.id }),
+  ]);
+
+  const u = userRes.data as Record<string, unknown> | null;
+  if (userRes.error || !u) {
+    res.status(404).json({ error: 'NOT_FOUND', message: 'Account not found.' });
+    return;
+  }
+
+  res.json({
+    user: {
+      id: u.id,
+      username: u.username,
+      phone: u.phone,
+      demoBalance: Number(u.demo_balance),
+      realBalance: Number(u.real_balance),
+      isAdmin: Boolean(u.is_admin),
+      isActive: Boolean(u.is_active),
+      createdAt: u.created_at,
+      lastSeenAt: u.last_seen_at,
+    },
+    statement: stmtRes.data ?? null,
+    transactions: (txRes.data ?? []) as unknown[],
+    adjustments: (adjRes.data ?? []) as unknown[],
+  });
+});
+
+/**
+ * Manual balance adjustment.
+ *
+ * This exists because deposits do fail — the STK push times out, the callback
+ * never arrives, the reconciliation sweep finds nothing — and the money is
+ * genuinely gone from the customer's phone. Someone has to be able to put it
+ * where it belongs.
+ *
+ * It is also the single most abusable call in the system, so it is built to
+ * leave a trail rather than to be convenient: a reason is required, the whole
+ * change is one locked transaction, the balance either side is recorded, and a
+ * real-money credit also writes a line into the trader's own statement so they
+ * see it too. Nothing here can quietly move money.
+ */
+adminRouter.post('/users/:id/balance', async (req, res) => {
+  const body = req.body as { amount?: unknown; mode?: unknown; reason?: unknown };
+  const amount = Number(body.amount);
+  const mode = body.mode === 'demo' ? 'demo' : 'real';
+  const reason = String(body.reason ?? '').trim();
+
+  if (!Number.isFinite(amount) || amount === 0) {
+    res.status(400).json({
+      error: 'INVALID_AMOUNT',
+      message: 'Enter an amount to credit (or a negative amount to debit).',
+    });
+    return;
+  }
+  if (reason.length < 3) {
+    res.status(400).json({
+      error: 'REASON_REQUIRED',
+      message: 'Give a reason — it is stored against the adjustment.',
+    });
+    return;
+  }
+
+  const { data, error } = await db.rpc('fpesa_admin_adjust_balance', {
+    p_admin: req.user!.id,
+    p_user: req.params.id,
+    p_mode: mode,
+    p_amount: Math.round(amount * 100) / 100,
+    p_reason: reason,
+  });
+
+  if (error) {
+    const code = pgErrorCode(error.message);
+    const known: Record<string, [number, string]> = {
+      USER_NOT_FOUND: [404, 'Account not found.'],
+      INSUFFICIENT_FUNDS: [400, 'That debit would take the balance below zero.'],
+      REASON_REQUIRED: [400, 'Give a reason for the adjustment.'],
+      INVALID_AMOUNT: [400, 'Enter a non-zero amount.'],
+      INVALID_MODE: [400, 'Choose the demo or the live balance.'],
+    };
+    const hit = known[code ?? ''];
+    if (hit) {
+      res.status(hit[0]).json({ error: code, message: hit[1] });
+      return;
+    }
+    console.error('[admin] balance adjust failed:', error.message);
+    res.status(500).json({ error: 'ADJUST_FAILED', message: 'Could not adjust the balance.' });
+    return;
+  }
+
+  const result = data as {
+    adjustmentId: string; mode: 'demo' | 'real';
+    before: number; after: number; demoBalance: number; realBalance: number;
+  };
+
+  console.log(
+    '[admin] ' + req.user!.username + ' adjusted ' + result.mode + ' balance of ' +
+    req.params.id + ' by ' + amount + ' (' + result.before + ' -> ' + result.after + '): ' + reason
+  );
+
+  // The trader may well be looking at the screen; push the new balance rather
+  // than leaving them to discover it on their next reload.
+  hub.toUser(req.params.id, {
+    type: 'balance',
+    demoBalance: Number(result.demoBalance),
+    realBalance: Number(result.realBalance),
+  });
+
+  res.json({
+    ok: true,
+    adjustmentId: result.adjustmentId,
+    mode: result.mode,
+    before: Number(result.before),
+    after: Number(result.after),
+    demoBalance: Number(result.demoBalance),
+    realBalance: Number(result.realBalance),
+  });
+});
+
+/** Every manual adjustment made on the platform, newest first. */
+adminRouter.get('/adjustments', async (_req, res) => {
+  const { data, error } = await db
+    .from('admin_adjustments')
+    .select('id, user_id, admin_id, account_mode, amount, balance_before, balance_after, reason, created_at')
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) {
+    res.status(500).json({ error: 'LOAD_FAILED', message: 'Could not load adjustments.' });
+    return;
+  }
+
+  const rows = (data ?? []) as Array<Record<string, unknown>>;
+  const ids = [...new Set(rows.flatMap((r) => [String(r.user_id), String(r.admin_id)]))];
+  const { data: people } = ids.length
+    ? await db.from('users').select('id, username').in('id', ids)
+    : { data: [] as Array<{ id: string; username: string }> };
+  const nameOf = new Map(
+    ((people ?? []) as Array<{ id: string; username: string }>).map((p) => [p.id, p.username])
+  );
+
+  res.json({
+    adjustments: rows.map((r) => ({
+      id: r.id,
+      user: nameOf.get(String(r.user_id)) ?? '—',
+      admin: nameOf.get(String(r.admin_id)) ?? '—',
+      mode: r.account_mode,
+      amount: Number(r.amount),
+      before: Number(r.balance_before),
+      after: Number(r.balance_after),
+      reason: r.reason,
+      createdAt: r.created_at,
+    })),
+  });
+});
 
 /** Abramowitz-Stegun 7.1.26 — plenty accurate for an operations readout. */
 function normalCdf(z: number): number {

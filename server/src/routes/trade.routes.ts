@@ -34,6 +34,8 @@ const placeSchema = z.object({
     'Choose one of the offered trade durations.'
   ),
   accountMode: z.enum(['demo', 'real']).default('demo'),
+  // Omitted by older clients, which trade the default market.
+  symbol: z.string().min(1).max(16).optional(),
 });
 
 tradeRouter.post('/', requireAuth, placeLimiter, async (req, res) => {
@@ -45,7 +47,7 @@ tradeRouter.post('/', requireAuth, placeLimiter, async (req, res) => {
     });
     return;
   }
-  const { direction, stake, durationSec, accountMode } = parsed.data;
+  const { direction, stake, durationSec, accountMode, symbol } = parsed.data;
 
   try {
     const result = await tradingEngine.placeTrade({
@@ -54,6 +56,7 @@ tradeRouter.post('/', requireAuth, placeLimiter, async (req, res) => {
       direction,
       stake,
       durationSec: durationSec as Duration,
+      symbol,
     });
     res.status(201).json(result);
   } catch (err) {
@@ -87,7 +90,7 @@ tradeRouter.post('/run', requireAuth, placeLimiter, async (req, res) => {
     });
     return;
   }
-  const { direction, stake, durationSec, accountMode, count } = parsed.data;
+  const { direction, stake, durationSec, accountMode, count, symbol } = parsed.data;
 
   try {
     const result = await tradingEngine.startRun({
@@ -97,6 +100,7 @@ tradeRouter.post('/run', requireAuth, placeLimiter, async (req, res) => {
       stake,
       durationSec: durationSec as Duration,
       count,
+      symbol,
     });
     res.status(201).json(result);
   } catch (err) {
@@ -157,6 +161,96 @@ tradeRouter.get('/open', requireAuth, async (req, res) => {
     return;
   }
   res.json({ trades: ((data ?? []) as TradeRow[]).map(toPublicTrade) });
+});
+
+/**
+ * The trader's own record: every closed position, plus the lifetime figures
+ * that put them in context.
+ *
+ * `from`/`to` are ISO dates. The window is applied to `settled_at` rather than
+ * `opened_at`, because a position opened at 23:59:58 and closed at 00:00:03
+ * belongs to the day it resolved — that is the day its money moved.
+ */
+tradeRouter.get('/history', requireAuth, async (req, res) => {
+  const mode = req.query.mode === 'demo' ? 'demo' : 'real';
+  const limit = Math.min(Number(req.query.limit ?? 300) || 300, 1000);
+
+  let query = db
+    .from('trades')
+    .select('*')
+    .eq('user_id', req.user!.id)
+    .eq('account_mode', mode)
+    .neq('status', 'OPEN')
+    .order('settled_at', { ascending: false })
+    .limit(limit);
+
+  const from = typeof req.query.from === 'string' ? req.query.from : null;
+  const to = typeof req.query.to === 'string' ? req.query.to : null;
+  if (from && !Number.isNaN(Date.parse(from))) query = query.gte('settled_at', from);
+  if (to && !Number.isNaN(Date.parse(to))) query = query.lte('settled_at', to);
+  if (typeof req.query.symbol === 'string' && req.query.symbol) {
+    query = query.eq('symbol', req.query.symbol);
+  }
+
+  const [tradesRes, statementRes] = await Promise.all([
+    query,
+    db.rpc('fpesa_user_statement', { p_user: req.user!.id }),
+  ]);
+
+  if (tradesRes.error) {
+    console.error('[trade] history failed:', tradesRes.error.message);
+    res.status(500).json({ error: 'LOAD_FAILED', message: 'Could not load your history.' });
+    return;
+  }
+
+  const trades = ((tradesRes.data ?? []) as TradeRow[]).map(toPublicTrade);
+
+  // Totals are computed over the returned window so the header always agrees
+  // with the rows underneath it. Lifetime figures come from the statement.
+  const wins = trades.filter((t) => t.status === 'WON').length;
+  const losses = trades.filter((t) => t.status === 'LOST').length;
+  const net = trades.reduce((sum, t) => sum + (t.profit ?? 0), 0);
+  const volume = trades.reduce((sum, t) => sum + t.stake, 0);
+  const best = trades.reduce((m, t) => Math.max(m, t.profit ?? 0), 0);
+  const worst = trades.reduce((m, t) => Math.min(m, t.profit ?? 0), 0);
+
+  const s = (statementRes.data ?? {}) as Record<string, string | number>;
+  const numeric = (key: string): number => Number(s[key] ?? 0);
+
+  res.json({
+    mode,
+    trades,
+    window: {
+      trades: trades.length,
+      wins,
+      losses,
+      ties: trades.length - wins - losses,
+      winRate: trades.length ? Math.round((wins / trades.length) * 1000) / 10 : 0,
+      netProfit: Math.round(net * 100) / 100,
+      volume: Math.round(volume * 100) / 100,
+      best: Math.round(best * 100) / 100,
+      worst: Math.round(worst * 100) / 100,
+    },
+    /**
+     * Lifetime, real money only. `netVsDeposits` is the figure a trader
+     * actually wants: what the account is worth now against everything they
+     * have ever put into it, withdrawals added back.
+     */
+    lifetime: {
+      deposits: numeric('deposits'),
+      withdrawals: numeric('withdrawals'),
+      adjustments: numeric('adjustments'),
+      tradingNet: numeric('realNet'),
+      volume: numeric('realVolume'),
+      trades: numeric('realTrades'),
+      balance: numeric('realBalance'),
+      netVsDeposits:
+        Math.round(
+          (numeric('realBalance') + numeric('withdrawals') -
+            numeric('deposits') - numeric('adjustments')) * 100
+        ) / 100,
+    },
+  });
 });
 
 /** Per-account performance summary for the account panel. */

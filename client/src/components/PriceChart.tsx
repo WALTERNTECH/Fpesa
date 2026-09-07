@@ -14,7 +14,6 @@ import {
 import { api } from '../lib/api';
 import { marketSocket } from '../lib/ws';
 import { useApp } from '../store/app';
-import { price as fmtPrice } from '../lib/format';
 import type { Candle, Timeframe } from '../lib/types';
 
 const TIMEFRAMES: Array<{ id: Timeframe; label: string; seconds: number }> = [
@@ -28,7 +27,8 @@ const TIMEFRAMES: Array<{ id: Timeframe; label: string; seconds: number }> = [
 type ViewMode = 'candles' | 'area';
 
 export function PriceChart(): JSX.Element {
-  const { price, tickDir, quote, openTrades, connected, config } = useApp();
+  const { price, tickDir, quote, openTrades, connected, symbol, instrument } = useApp();
+  const precision = instrument?.precision ?? 2;
   const [timeframe, setTimeframe] = useState<Timeframe>('5s');
   const [view, setView] = useState<ViewMode>('candles');
 
@@ -118,6 +118,14 @@ export function PriceChart(): JSX.Element {
     };
   }, []);
 
+  // Instruments quote to different precisions; a 3-decimal market rendered at
+  // 2 shows a flat line where there is actually movement.
+  useEffect(() => {
+    const format = { type: 'price' as const, precision, minMove: Math.pow(10, -precision) };
+    candleRef.current?.applyOptions({ priceFormat: format });
+    areaRef.current?.applyOptions({ priceFormat: format });
+  }, [precision]);
+
   // ------------------------------------------------------------- swap views
   useEffect(() => {
     candleRef.current?.applyOptions({ visible: view === 'candles' });
@@ -130,7 +138,9 @@ export function PriceChart(): JSX.Element {
 
     (async () => {
       try {
-        const res = await api.get<{ candles: Candle[] }>('/market/candles?tf=' + timeframe);
+        const res = await api.get<{ candles: Candle[] }>(
+          '/market/candles?tf=' + timeframe + '&symbol=' + symbol
+        );
         if (cancelled) return;
 
         const bars: CandlestickData[] = res.candles.map((c) => ({
@@ -157,12 +167,12 @@ export function PriceChart(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [timeframe]);
+  }, [timeframe, symbol]);
 
   // ------------------------------------------------- fold ticks into the bar
   useEffect(() => {
     return marketSocket.on((msg) => {
-      if (msg.type !== 'tick') return;
+      if (msg.type !== 'tick' || msg.symbol !== symbol) return;
       const bucket = Math.floor(msg.ts / 1000 / stepSeconds) * stepSeconds;
       const current = barRef.current;
 
@@ -193,7 +203,7 @@ export function PriceChart(): JSX.Element {
       });
       areaRef.current?.update({ time: next.time as UTCTimestamp, value: next.close });
     });
-  }, [stepSeconds]);
+  }, [stepSeconds, symbol]);
 
   // ------------------------------------------- entry markers for live trades
   useEffect(() => {
@@ -201,8 +211,12 @@ export function PriceChart(): JSX.Element {
     if (!series) return;
     const lines = linesRef.current;
 
+    // Positions on other markets have entry prices from a different scale;
+    // drawing them here would put lines nowhere near this chart's range.
+    const shown = openTrades.filter((t) => t.symbol === symbol);
+
     const wanted = new Set<string>();
-    for (const t of openTrades) {
+    for (const t of shown) {
       wanted.add(t.id);
       wanted.add(t.id + ':stop');
     }
@@ -217,7 +231,7 @@ export function PriceChart(): JSX.Element {
       }
     }
 
-    for (const trade of openTrades) {
+    for (const trade of shown) {
       if (lines.has(trade.id)) continue;
       const line = series.createPriceLine({
         price: trade.entryPrice,
@@ -243,7 +257,7 @@ export function PriceChart(): JSX.Element {
         lines.set(trade.id + ':stop', stop);
       }
     }
-  }, [openTrades, view]);
+  }, [openTrades, view, symbol]);
 
   const change = quote ? price - quote.dayOpen : 0;
   const changePct = quote && quote.dayOpen ? (change / quote.dayOpen) * 100 : 0;
@@ -257,18 +271,18 @@ export function PriceChart(): JSX.Element {
             📈
           </span>
           <div>
-            <div className="name">{config.symbol}</div>
-            <div className="desc">{config.symbolName}</div>
+            <div className="name">{symbol}</div>
+            <div className="desc">{instrument?.name ?? 'Synthetic index'}</div>
           </div>
         </div>
 
         <div className="chart-price">
           <span className={'live tnum' + (tickDir ? ' tick-' + tickDir : '')}>
-            {fmtPrice(price)}
+            {price.toFixed(precision)}
           </span>
           <span className={'chg tnum ' + (up ? 'up' : 'down')}>
             {up ? '+' : '−'}
-            {Math.abs(change).toFixed(2)} ({up ? '+' : '−'}
+            {Math.abs(change).toFixed(precision)} ({up ? '+' : '−'}
             {Math.abs(changePct).toFixed(2)}%)
           </span>
         </div>
@@ -304,7 +318,7 @@ export function PriceChart(): JSX.Element {
       <div className="feed-note">
         <span className={'feed-dot' + (connected ? '' : ' stale')} />
         {connected
-          ? 'Live feed connected · streaming ' + config.symbol
+          ? 'Live feed connected · streaming ' + symbol
           : 'Reconnecting to the market feed…'}
       </div>
     </div>

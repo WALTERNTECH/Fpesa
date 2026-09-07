@@ -169,3 +169,101 @@ td.down { color: var(--down); font-weight: 600; }
   overflow: hidden;
 }
 @media (min-width: 720px) { .chart { height: 380px; } }
+
+/* ------------------------------------------------------------------ tabs */
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 18px;
+  background: var(--surface-sunk, #f2f5fa);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+}
+.tabs button {
+  flex: 1;
+  min-height: 38px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--subtle);
+  cursor: pointer;
+}
+.tabs button[aria-pressed='true'] {
+  background: var(--white);
+  color: var(--blue, #0b4fd8);
+  box-shadow: 0 1px 2px rgba(10, 13, 20, 0.06);
+}
+
+/* -------------------------------------------------------------- accounts */
+.search { display: flex; gap: 8px; margin-bottom: 12px; }
+.search input { flex: 1; }
+
+.btn.sm { min-height: 30px; padding: 0 10px; font-size: 12px; }
+
+.pill {
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 999px;
+  background: var(--blue-soft, #ebf1fe);
+  color: var(--blue, #0b4fd8);
+}
+
+.adjust { display: grid; gap: 10px; }
+.adjust .row { display: flex; gap: 10px; flex-wrap: wrap; }
+.adjust .row > label { flex: 1 1 160px; }
+.adjust label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--subtle);
+}
+.adjust input, .adjust select {
+  min-height: 40px;
+  padding: 0 11px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink, #0a0d14);
+  background: var(--white);
+  border: 1px solid var(--line-strong, rgba(10, 13, 20, 0.14));
+  border-radius: 9px;
+}
+
+/* The balance either side of the change, shown before it can be confirmed.
+   An operator typing 20000 when they meant 2000 should see it here. */
+.preview {
+  margin: 0;
+  padding: 9px 11px;
+  font-size: 13px;
+  background: var(--blue-soft, #ebf1fe);
+  border-radius: 9px;
+  color: var(--ink-2, #263043);
+}
+.preview.bad { background: #fdecee; color: #b3212f; }
+
+.confirm {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--blue, #0b4fd8);
+  border-radius: 11px;
+  background: var(--white);
+}
+.confirm p { margin: 0; font-size: 13.5px; line-height: 1.5; }
+
+.ok {
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  border-radius: 9px;
+  background: #e6f7f1;
+  color: #00754e;
+}
+
+td.ref { font-size: 11px; color: var(--subtle); }

@@ -34,6 +34,8 @@ class MarketSocket {
   private attempts = 0;
   private retryTimer: number | null = null;
   private closed = false;
+  /** The market this client wants ticks for; re-sent on every reconnect. */
+  private watching: string | null = null;
 
   connect(): void {
     if (this.socket && (this.socket.readyState === WebSocket.OPEN ||
@@ -56,6 +58,9 @@ class MarketSocket {
     socket.onopen = () => {
       this.attempts = 0;
       this.emitStatus(true);
+      // A reconnect lands on a fresh server-side socket that defaults to the
+      // reference market, so the choice has to be restated every time.
+      if (this.watching) this.send({ type: 'watch', symbol: this.watching });
     };
     socket.onmessage = (event) => {
       let msg: ServerMessage;
@@ -105,6 +110,22 @@ class MarketSocket {
     }
     this.socket?.close();
     this.socket = null;
+  }
+
+  private send(msg: Record<string, unknown>): void {
+    if (this.socket?.readyState !== WebSocket.OPEN) return;
+    try {
+      this.socket.send(JSON.stringify(msg));
+    } catch {
+      // Dropped mid-write; the reconnect will restate it.
+    }
+  }
+
+  /** Switches which instrument's ticks this socket receives. */
+  watch(symbol: string): void {
+    if (this.watching === symbol) return;
+    this.watching = symbol;
+    this.send({ type: 'watch', symbol });
   }
 
   private emitStatus(connected: boolean): void {

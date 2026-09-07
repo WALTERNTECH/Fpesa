@@ -4,7 +4,8 @@ import { NewsTicker } from './components/NewsTicker';
 import { PriceChart } from './components/PriceChart';
 import { TradePanel } from './components/TradePanel';
 import { TradeBar } from './components/TradeBar';
-import { SocialTabs } from './components/SocialTabs';
+import { MarketPicker } from './components/MarketPicker';
+import { TradeHistory } from './components/TradeHistory';
 import { SupportButton } from './components/SupportButton';
 import { InstallPrompt } from './components/InstallPrompt';
 import { AuthModal } from './components/AuthModal';
@@ -21,11 +22,12 @@ export function App(): JSX.Element {
       <NewsTicker />
 
       <main className="app">
+        <MarketPicker />
         <div className="desk">
           <PriceChart />
           <TradePanel />
         </div>
-        <SocialTabs />
+        <TradeHistory />
       </main>
 
       <Footer />

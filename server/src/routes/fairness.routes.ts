@@ -2,8 +2,16 @@ import { Router } from 'express';
 import { env } from '../env.js';
 import { requireAuth } from '../lib/auth.js';
 import { priceFeed, SYMBOL } from '../services/prices.js';
+import { getInstrument, INSTRUMENTS } from '../services/instruments.js';
 
 export const fairnessRouter = Router();
+
+/** Resolves ?symbol=, defaulting to the reference instrument. */
+function pick(raw: unknown): string | null {
+  if (raw === undefined || raw === null || raw === '') return SYMBOL;
+  const i = getInstrument(String(raw));
+  return i && priceFeed.has(i.symbol) ? i.symbol : null;
+}
 
 /**
  * Public proof surface for the synthetic instrument.
@@ -17,12 +25,17 @@ export const fairnessRouter = Router();
  * Note what is deliberately absent: the seed of the *running* epoch. It is
  * never served until its epoch has ended.
  */
-fairnessRouter.get('/', (_req, res) => {
-  const engine = priceFeed.engine();
+fairnessRouter.get('/', (req, res) => {
+  const symbol = pick(req.query.symbol);
+  if (!symbol) {
+    res.status(400).json({ error: 'UNKNOWN_MARKET', message: 'No such market.' });
+    return;
+  }
+  const engine = priceFeed.engine(symbol);
   if (!engine) {
     res.json({
       mode: env.priceMode,
-      symbol: SYMBOL,
+      symbol,
       provablyFair: false,
       note:
         'This deployment tracks an external market feed, so prices are not ' +
@@ -35,8 +48,11 @@ fairnessRouter.get('/', (_req, res) => {
   const params = engine.params();
   res.json({
     mode: env.priceMode,
-    symbol: SYMBOL,
-    name: env.symbolName,
+    symbol,
+    name: getInstrument(symbol)?.name ?? env.symbolName,
+    // Each instrument runs its own seed chain, so a commitment for one says
+    // nothing about any other. Listed here so a verifier knows what to ask for.
+    markets: INSTRUMENTS.filter((i) => priceFeed.has(i.symbol)).map((i) => i.symbol),
     provablyFair: true,
     algorithm: {
       digest: 'HMAC-SHA256(seed, "<epoch>:<tickIndex>")',
@@ -56,8 +72,8 @@ fairnessRouter.get('/', (_req, res) => {
     current: engine.commitment(),
     revealed: engine.revealed(24),
     verify:
-      'node scripts/verify-epoch.mjs <epoch> — replays a closed epoch from its ' +
-      'published seed and checks it against sha256(seed).',
+      'node scripts/verify-epoch.mjs <epoch> [symbol] — replays a closed epoch ' +
+      'from its published seed and checks it against sha256(seed).',
   });
 });
 
@@ -67,13 +83,18 @@ fairnessRouter.get('/engine', requireAuth, (req, res) => {
     res.status(403).json({ error: 'FORBIDDEN', message: 'Admins only.' });
     return;
   }
-  const engine = priceFeed.engine();
-  const quote = priceFeed.stats();
+  const symbol = pick(req.query.symbol);
+  if (!symbol) {
+    res.status(400).json({ error: 'UNKNOWN_MARKET', message: 'No such market.' });
+    return;
+  }
+  const engine = priceFeed.engine(symbol);
+  const quote = priceFeed.stats(symbol);
 
   res.json({
     mode: env.priceMode,
-    symbol: SYMBOL,
-    name: env.symbolName,
+    symbol,
+    name: getInstrument(symbol)?.name ?? env.symbolName,
     feed: priceFeed.health(),
     quote,
     parameters: engine ? engine.params() : null,

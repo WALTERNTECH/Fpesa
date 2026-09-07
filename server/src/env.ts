@@ -144,10 +144,27 @@ export const env = {
    */
   turnoverMultiple: num('WITHDRAWAL_TURNOVER_MULTIPLE', 0),
   minStake: num('TRADE_MIN_STAKE', 50),
-  maxStake: num('TRADE_MAX_STAKE', 150000),
+  maxStake: num('TRADE_MAX_STAKE', 1000000),
   demoStartingBalance: num('DEMO_STARTING_BALANCE', 10000),
   minDeposit: num('MIN_DEPOSIT', 50),
+  /**
+   * Ceiling on a single deposit. **0 means no ceiling of ours.**
+   *
+   * Note what that does and does not remove. M-Pesa itself caps one customer
+   * transaction — Safaricom's limit, not this platform's — so an STK push above
+   * it is refused by the provider however this is set. Zero here means we stop
+   * adding a limit of our own and let the trader deposit in as many
+   * transactions as they need; it does not make a single larger push succeed.
+   */
+  maxDeposit: num('MAX_DEPOSIT', 0),
   minWithdrawal: num('MIN_WITHDRAWAL', 100),
+  /**
+   * Ceiling on a single payout. Unlike deposits this stays set, because a B2C
+   * transfer above the provider's per-transaction limit fails *after* the
+   * balance has been reserved, which is a far worse experience than being told
+   * up front to take it in two. 0 disables it.
+   */
+  maxWithdrawal: num('MAX_WITHDRAWAL', 250000),
 
   supportTelegram: str('SUPPORT_TELEGRAM_URL', 'https://t.me/KRYPTONinv'),
   /** Operations console origin, shown to admins in the account menu. */

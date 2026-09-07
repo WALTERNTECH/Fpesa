@@ -878,7 +878,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ------------------------------------------------------------- floor tabs */
+/* --------------------------------------------------------- segmented control */
 .seg {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -902,8 +902,6 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   color: var(--blue);
   box-shadow: var(--shadow-sm);
 }
-.floor-pane { display: none; }
-.floor-pane.is-active { display: block; }
 
 .scroll-area {
   max-height: 340px;
@@ -1315,10 +1313,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   .trade-login { margin-top: 12px; }
   .support-fab { bottom: calc(14px + var(--safe-b)); }
   .install-sheet { bottom: calc(10px + var(--safe-b)); }
-  /* Wide enough to show all three floor panels at once, so the tabs go away. */
   .seg { display: none; }
-  .floor-panes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gutter); }
-  .floor-pane { display: block; }
   .footer { padding-bottom: calc(24px + var(--safe-b)); }
 }
 
@@ -1575,3 +1570,216 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   letter-spacing: -0.01em;
 }
 .ba-sub { font-size: 10.5px; color: rgba(255, 255, 255, 0.72); }
+
+/* ========================================================================== */
+/*  Market switcher                                                           */
+/* ========================================================================== */
+
+/* A horizontal rail rather than a dropdown: on a phone the five markets are
+   one thumb-swipe apart, and the price on each is visible without opening
+   anything. Scroll-snap keeps a card square in the viewport after a flick. */
+.markets {
+  display: flex;
+  gap: 8px;
+  margin-bottom: var(--gutter);
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.markets::-webkit-scrollbar { display: none; }
+
+.mk {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+  min-width: 118px;
+  display: grid;
+  gap: 2px;
+  padding: 9px 11px;
+  text-align: left;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease),
+              transform 0.15s var(--ease);
+}
+.mk:hover { border-color: var(--line-strong); }
+.mk:active { transform: scale(0.985); }
+.mk.is-active {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 1px var(--blue), var(--shadow-sm);
+  background: var(--blue-soft);
+}
+
+.mk-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.mk-sym { font-size: 12px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
+.mk-chg { font-size: 11px; font-weight: 600; }
+.mk-chg.up { color: var(--up); }
+.mk-chg.down { color: var(--down); }
+.mk-px { font-size: 16px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; }
+.mk-name { font-size: 10.5px; color: var(--subtle); font-weight: 500; }
+.mk.is-active .mk-name { color: var(--blue); }
+
+/* ========================================================================== */
+/*  Trading history                                                           */
+/* ========================================================================== */
+
+.history .card-body { display: grid; gap: 12px; }
+
+.hist-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.ht {
+  display: grid;
+  gap: 2px;
+  padding: 9px 11px;
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.ht .k { font-size: 10.5px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.ht .v { font-size: 16px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; }
+.ht .v.small { font-size: 12.5px; }
+.ht .v.up { color: var(--up); }
+.ht .v.down { color: var(--down); }
+
+.hist-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.hist-filters .seg.compact { margin-bottom: 0; flex: 1 1 190px; }
+.hist-filters .seg.compact button { min-height: 34px; font-size: 12.5px; }
+.hist-input {
+  flex: 1 1 130px;
+  min-height: 38px;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--white);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+}
+.hist-input:focus-visible { outline: 2px solid var(--blue-ring); outline-offset: 1px; }
+
+.hist-note { padding: 18px 4px; text-align: center; font-size: 13px; color: var(--muted); }
+.hist-note.error { color: var(--down); }
+
+.hist-days { display: grid; gap: 10px; max-height: 460px; overflow-y: auto; overscroll-behavior: contain; }
+.hist-day { border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+
+.hd-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  background: var(--surface-sunk);
+  border-bottom: 1px solid var(--line);
+}
+.hd-date { font-size: 12.5px; font-weight: 700; color: var(--ink); }
+.hd-meta { font-size: 11px; color: var(--subtle); margin-right: auto; }
+.hd-net { font-size: 13px; font-weight: 700; }
+.hd-net.up { color: var(--up); }
+.hd-net.down { color: var(--down); }
+
+.hd-rows { display: grid; }
+
+/* One position per row. The grid is fixed rather than auto so the columns line
+   up down the whole ledger — a statement you cannot scan by column is just a
+   list. It scrolls sideways on narrow phones instead of wrapping. */
+.hr {
+  display: grid;
+  grid-template-columns: 62px 44px minmax(74px, 1fr) minmax(104px, 1.2fr) 74px 92px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.hr:last-child { border-bottom: none; }
+.hr-time { color: var(--subtle); font-size: 11px; }
+.hr-side {
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  padding: 3px 0;
+  border-radius: 5px;
+  letter-spacing: 0.03em;
+}
+.hr-side.buy { color: var(--up); background: var(--up-soft); }
+.hr-side.sell { color: var(--down); background: var(--down-soft); }
+.hr-mkt { display: flex; gap: 5px; align-items: baseline; min-width: 0; }
+.hr-mkt .s { font-weight: 600; color: var(--ink-2); font-size: 11.5px; }
+.hr-mkt .d { color: var(--subtle); font-size: 10.5px; }
+.hr-px { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hr-px .arrow { margin: 0 4px; color: var(--subtle); }
+.hr-stake { color: var(--ink-2); text-align: right; font-weight: 600; }
+.hr-pnl { text-align: right; font-weight: 700; white-space: nowrap; }
+.hr-pnl.up { color: var(--up); }
+.hr-pnl.down { color: var(--down); }
+.hr-pnl.flat { color: var(--muted); }
+.hr-pnl em {
+  font-style: normal;
+  font-size: 9px;
+  margin-left: 4px;
+  padding: 1px 3px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  color: var(--subtle);
+  vertical-align: middle;
+}
+
+.hist-life {
+  padding: 11px;
+  background: var(--blue-soft);
+  border: 1px solid var(--blue-soft-2);
+  border-radius: var(--r);
+}
+.hl-title { font-size: 11px; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+.hl-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.hl-grid > div, .hl-bottom { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.hl-grid .k, .hl-bottom .k { font-size: 11.5px; color: var(--muted); font-weight: 500; }
+.hl-grid .v { font-size: 13px; font-weight: 700; color: var(--ink); }
+.hl-bottom {
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid var(--blue-soft-2);
+}
+.hl-bottom .k { font-weight: 600; color: var(--ink-2); }
+.hl-bottom .v { font-size: 16px; font-weight: 700; }
+.hl-bottom .v.up { color: var(--up); }
+.hl-bottom .v.down { color: var(--down); }
+.hl-note { margin-top: 7px; font-size: 11px; color: var(--muted); }
+
+.empty-state { display: grid; gap: 12px; justify-items: center; padding: 26px 14px; text-align: center; }
+.empty-state p { font-size: 13.5px; color: var(--muted); max-width: 34ch; }
+
+/* Deposit sits in the header beside the balance, so it needs to survive the
+   narrowest phone without pushing the account button off-screen. */
+.btn-deposit {
+  gap: 5px;
+  color: var(--blue);
+  background: var(--blue-soft);
+  border: 1px solid var(--blue-soft-2);
+  font-weight: 650;
+}
+.btn-deposit:hover { background: var(--blue-soft-2); }
+
+@media (max-width: 400px) {
+  .btn-deposit span { display: none; }
+  .btn-deposit { padding: 0 9px; }
+}
+
+@media (min-width: 700px) {
+  .hist-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .hl-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* Below this the ledger's six columns stop fitting; it scrolls sideways as one
+   block so the columns stay aligned rather than reflowing per row. */
+@media (max-width: 560px) {
+  .hd-rows { overflow-x: auto; }
+  .hr { min-width: 470px; }
+}

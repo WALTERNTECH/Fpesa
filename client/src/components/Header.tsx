@@ -95,7 +95,20 @@ export function Header(): JSX.Element {
               </button>
             </>
           ) : (
-            <div className="pos-rel" ref={menuRef}>
+            <>
+              {/* Depositing is the one action that should never be behind a
+                  menu: a trader who cannot fund the account cannot do anything
+                  else either. It sits beside the balance, in the header, on
+                  every screen. */}
+              <button
+                className="btn btn-deposit btn-sm"
+                onClick={() => openModal('deposit')}
+              >
+                <IconArrowDown size={15} />
+                <span>Deposit</span>
+              </button>
+
+              <div className="pos-rel" ref={menuRef}>
               <button
                 className="acct-btn"
                 onClick={() => setMenuOpen((v) => !v)}
@@ -203,7 +216,8 @@ export function Header(): JSX.Element {
                   </button>
                 </div>
               )}
-            </div>
+              </div>
+            </>
           )}
         </div>
       </div>

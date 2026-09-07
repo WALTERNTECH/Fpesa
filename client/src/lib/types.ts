@@ -39,6 +39,7 @@ export type Trade = {
 export type Run = {
   id: string;
   direction: Direction;
+  symbol: string;
   stake: number;
   durationSec: number;
   totalCount: number;
@@ -59,6 +60,7 @@ export type Candle = {
 export type Quote = {
   symbol: string;
   name: string;
+  precision?: number;
   price: number;
   change: number;
   changePct: number;
@@ -99,7 +101,7 @@ export type LeaderRow = {
 
 export type Transaction = {
   id: string;
-  kind: 'DEPOSIT' | 'WITHDRAWAL';
+  kind: 'DEPOSIT' | 'WITHDRAWAL' | 'ADJUSTMENT';
   amount: number;
   status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED' | 'EXPIRED';
   phone: string;
@@ -120,6 +122,53 @@ export type DeskState = {
   armed: boolean;
 };
 
+/** One tradeable market. */
+export type Instrument = {
+  symbol: string;
+  name: string;
+  volatility: number;
+  precision: number;
+  multipliers: Record<string, number>;
+};
+
+/** An instrument with its live headline numbers, for the market switcher. */
+export type MarketSummary = Instrument & {
+  price: number;
+  change: number;
+  changePct: number;
+  dayOpen: number;
+};
+
+export type HistoryWindow = {
+  trades: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  winRate: number;
+  netProfit: number;
+  volume: number;
+  best: number;
+  worst: number;
+};
+
+export type Lifetime = {
+  deposits: number;
+  withdrawals: number;
+  adjustments: number;
+  tradingNet: number;
+  volume: number;
+  trades: number;
+  balance: number;
+  netVsDeposits: number;
+};
+
+export type HistoryResponse = {
+  mode: AccountMode;
+  trades: Trade[];
+  window: HistoryWindow;
+  lifetime: Lifetime;
+};
+
 export type PlatformConfig = {
   minStake: number;
   maxStake: number;
@@ -131,11 +180,15 @@ export type PlatformConfig = {
   turnoverMultiple: number;
   symbol: string;
   symbolName: string;
+  instruments: Instrument[];
   provablyFair: boolean;
   adminUrl: string;
   desk: DeskState;
   minDeposit: number;
+  /** 0 means no ceiling of ours — see the server's env.ts. */
+  maxDeposit: number;
   minWithdrawal: number;
+  maxWithdrawal: number;
   supportTelegram: string;
   demoStartingBalance: number;
 };

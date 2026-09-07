@@ -1,6 +1,7 @@
 import { env } from '../env.js';
 import { db, pgErrorCode } from '../lib/db.js';
 import { priceFeed, SYMBOL } from './prices.js';
+import { getInstrument, instrumentOr } from './instruments.js';
 import { exposureGuard } from './exposure.js';
 import { hub } from '../realtime/hub.js';
 
@@ -80,7 +81,11 @@ export function toPublicTrade(row: TradeRow): PublicTrade {
 export const ALLOWED_DURATIONS = [5, 10, 15, 30, 60] as const;
 export type Duration = (typeof ALLOWED_DURATIONS)[number];
 
-/** Parsed once from TRADE_MULTIPLIERS ("5:2000,10:1400,..."). */
+/**
+ * Base multipliers, parsed once from TRADE_MULTIPLIERS ("5:2000,10:1400,...").
+ * These are expressed against the reference instrument; every other instrument
+ * scales off them by its own `multiplierScale`.
+ */
 const MULTIPLIERS: Map<number, number> = (() => {
   const map = new Map<number, number>();
   for (const pair of env.multipliers.split(',')) {
@@ -95,8 +100,20 @@ const MULTIPLIERS: Map<number, number> = (() => {
   return map;
 })();
 
-export function multiplierFor(durationSec: number): number {
-  return MULTIPLIERS.get(durationSec) ?? 1000;
+/**
+ * The multiplier for one duration on one instrument.
+ *
+ * Scaling by the instrument's inverse volatility is what keeps the stop-out the
+ * same distance in standard deviations everywhere — see instruments.ts. Without
+ * it, a low-volatility index would never resolve inside 5 seconds and a
+ * high-volatility one would stop out almost on contact.
+ */
+export function multiplierFor(durationSec: number, symbol: string = SYMBOL): number {
+  const base = MULTIPLIERS.get(durationSec) ?? 1000;
+  const scaled = base * instrumentOr(symbol).multiplierScale;
+  // Whole numbers keep the figure readable in the UI and on the trade record;
+  // the rounding error is far below one tick of price.
+  return Math.round(scaled);
 }
 
 /**
@@ -111,11 +128,12 @@ export function multiplierFor(durationSec: number): number {
 export function applySpread(
   mid: number,
   direction: 'BUY' | 'SELL',
-  multiplier: number
+  multiplier: number,
+  precision = 2
 ): number {
   const offset = env.houseEdge / multiplier;
   const sign = direction === 'BUY' ? 1 : -1;
-  return Math.round(mid * (1 + sign * offset) * 100) / 100;
+  return roundTo(mid * (1 + sign * offset), precision);
 }
 
 /**
@@ -130,19 +148,25 @@ export function exitLevels(
   entry: number,
   direction: 'BUY' | 'SELL',
   multiplier: number,
-  maxProfitMultiple: number
+  maxProfitMultiple: number,
+  precision = 2
 ): { stopOut: number; takeProfit: number } {
   const lossMove = 1 / multiplier;
   const gainMove = maxProfitMultiple / multiplier;
   const sign = direction === 'BUY' ? 1 : -1;
   return {
-    stopOut: round2(entry * (1 - sign * lossMove)),
-    takeProfit: round2(entry * (1 + sign * gainMove)),
+    stopOut: roundTo(entry * (1 - sign * lossMove), precision),
+    takeProfit: roundTo(entry * (1 + sign * gainMove), precision),
   };
 }
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+function roundTo(n: number, precision: number): number {
+  const f = Math.pow(10, precision);
+  return Math.round(n * f) / f;
 }
 
 /** Running profit on an open position at the current price. */
@@ -167,6 +191,7 @@ export type RunRow = {
   user_id: string;
   account_mode: 'demo' | 'real';
   direction: 'BUY' | 'SELL' | 'AUTO';
+  symbol: string;
   stake: string | number;
   duration_sec: number;
   total_count: number;
@@ -179,6 +204,7 @@ export type RunRow = {
 export type PublicRun = {
   id: string;
   direction: 'BUY' | 'SELL' | 'AUTO';
+  symbol: string;
   stake: number;
   durationSec: number;
   totalCount: number;
@@ -192,6 +218,7 @@ export function toPublicRun(row: RunRow): PublicRun {
   return {
     id: row.id,
     direction: row.direction,
+    symbol: row.symbol ?? SYMBOL,
     stake: Number(row.stake),
     durationSec: row.duration_sec,
     totalCount: row.total_count,
@@ -219,6 +246,7 @@ function legDirection(configured: 'BUY' | 'SELL' | 'AUTO'): 'BUY' | 'SELL' {
 /** What the tick monitor needs to decide whether a position must close now. */
 type LivePosition = {
   id: string;
+  symbol: string;
   direction: 'BUY' | 'SELL';
   stopOut: number;
   takeProfit: number;
@@ -235,7 +263,9 @@ class TradingEngine {
 
     // Watch every tick so a position that runs out of margin closes the moment
     // it happens, rather than waiting for its expiry timer.
-    this.unsubscribeTicks = priceFeed.subscribe((tick) => this.checkLevels(tick.price));
+    this.unsubscribeTicks = priceFeed.subscribe((tick) =>
+      this.checkLevels(tick.symbol, tick.price)
+    );
 
     this.leaderboardTimer = setInterval(() => void this.publishLeaderboard(), 20_000);
     void this.publishLeaderboard();
@@ -254,9 +284,12 @@ class TradingEngine {
    * tick, so it stays a plain scan over open positions — settlement itself is
    * idempotent, so a race with the expiry timer resolves harmlessly.
    */
-  private checkLevels(price: number): void {
+  private checkLevels(symbol: string, price: number): void {
     if (this.live.size === 0) return;
     for (const pos of this.live.values()) {
+      // Every instrument ticks into this, so a position is only ever measured
+      // against its own market's price.
+      if (pos.symbol !== symbol) continue;
       const hitStop =
         pos.direction === 'BUY' ? price <= pos.stopOut : price >= pos.stopOut;
       const hitTarget =
@@ -269,7 +302,7 @@ class TradingEngine {
         clearTimeout(timer);
         this.timers.delete(pos.id);
       }
-      void this.settle(pos.id, hitStop ? 'STOP_OUT' : 'TAKE_PROFIT');
+      void this.settle(pos.id, hitStop ? 'STOP_OUT' : 'TAKE_PROFIT', pos.symbol);
     }
   }
 
@@ -292,12 +325,12 @@ class TradingEngine {
       const trade = toPublicTrade(row);
       const msLeft = new Date(row.expires_at).getTime() - Date.now();
       if (msLeft <= 0) {
-        await this.settle(row.id, 'EXPIRY');
+        await this.settle(row.id, 'EXPIRY', trade.symbol);
       } else {
         // Barriers have to be watched again after a restart, or a recovered
         // position could run past its stop-out untouched until expiry.
         this.track(trade);
-        this.scheduleSettlement(row.id, msLeft);
+        this.scheduleSettlement(row.id, msLeft, trade.symbol);
       }
     }
   }
@@ -306,19 +339,20 @@ class TradingEngine {
     if (trade.stopOutPrice === null || trade.takeProfitPrice === null) return;
     this.live.set(trade.id, {
       id: trade.id,
+      symbol: trade.symbol,
       direction: trade.direction,
       stopOut: trade.stopOutPrice,
       takeProfit: trade.takeProfitPrice,
     });
   }
 
-  private scheduleSettlement(tradeId: string, msFromNow: number): void {
+  private scheduleSettlement(tradeId: string, msFromNow: number, symbol: string): void {
     const existing = this.timers.get(tradeId);
     if (existing) clearTimeout(existing);
     const timer = setTimeout(() => {
       this.timers.delete(tradeId);
       this.live.delete(tradeId);
-      void this.settle(tradeId, 'EXPIRY');
+      void this.settle(tradeId, 'EXPIRY', symbol);
     }, Math.max(msFromNow, 0));
     this.timers.set(tradeId, timer);
   }
@@ -329,10 +363,17 @@ class TradingEngine {
     direction: 'BUY' | 'SELL';
     stake: number;
     durationSec: Duration;
+    symbol?: string;
     runId?: string;
     runIndex?: number;
   }): Promise<{ trade: PublicTrade; balance: number }> {
     const { userId, mode, direction, stake, durationSec } = params;
+
+    const instrument = getInstrument(params.symbol ?? SYMBOL);
+    if (!instrument || !priceFeed.has(instrument.symbol)) {
+      throw new TradeError('UNKNOWN_MARKET', 'That market is not available for trading.');
+    }
+    const symbol = instrument.symbol;
 
     if (!Number.isFinite(stake)) {
       throw new TradeError('INVALID_STAKE', 'Enter a valid trade amount.');
@@ -371,17 +412,19 @@ class TradingEngine {
 
     // The entry price is whatever the server's feed says right now — never a
     // value supplied by the browser.
-    const mid = priceFeed.current().price;
-    const multiplier = multiplierFor(durationSec);
+    const mid = priceFeed.current(symbol).price;
+    const multiplier = multiplierFor(durationSec, symbol);
     // House edge, applied the way a broker applies a spread: the entry is
     // marked against the trader by edge/multiplier, so the expected cost is
-    // exactly env.houseEdge of the stake, identically at every duration.
-    const entry = applySpread(mid, direction, multiplier);
+    // exactly env.houseEdge of the stake, identically at every duration and on
+    // every instrument.
+    const entry = applySpread(mid, direction, multiplier, instrument.precision);
     const { stopOut, takeProfit } = exitLevels(
       entry,
       direction,
       multiplier,
-      env.maxProfitMultiple
+      env.maxProfitMultiple,
+      instrument.precision
     );
 
     const { data, error } = await db.rpc('fpesa_place_trade', {
@@ -392,7 +435,7 @@ class TradingEngine {
       p_duration: durationSec,
       p_entry: entry,
       p_payout_rate: env.payoutRate,
-      p_symbol: SYMBOL,
+      p_symbol: symbol,
       p_multiplier: multiplier,
       p_stop_out: stopOut,
       p_take_profit: takeProfit,
@@ -426,7 +469,7 @@ class TradingEngine {
     }
     const trade = toPublicTrade(result.trade);
     this.track(trade);
-    this.scheduleSettlement(trade.id, durationSec * 1000);
+    this.scheduleSettlement(trade.id, durationSec * 1000, symbol);
 
     return { trade, balance: Number(result.balance) };
   }
@@ -447,8 +490,14 @@ class TradingEngine {
     stake: number;
     durationSec: Duration;
     count: number;
+    symbol?: string;
   }): Promise<{ run: PublicRun; trade: PublicTrade; balance: number }> {
     const { userId, mode, direction, stake, durationSec, count } = params;
+
+    const instrument = getInstrument(params.symbol ?? SYMBOL);
+    if (!instrument || !priceFeed.has(instrument.symbol)) {
+      throw new TradeError('UNKNOWN_MARKET', 'That market is not available for trading.');
+    }
 
     const { data, error } = await db
       .from('trade_runs')
@@ -456,6 +505,7 @@ class TradingEngine {
         user_id: userId,
         account_mode: mode,
         direction,
+        symbol: instrument.symbol,
         stake: Math.round(stake * 100) / 100,
         duration_sec: durationSec,
         total_count: count,
@@ -471,7 +521,7 @@ class TradingEngine {
     try {
       const first = await this.placeTrade({
         userId, mode, direction: legDirection(direction), stake, durationSec,
-        runId: run.id, runIndex: 1,
+        symbol: instrument.symbol, runId: run.id, runIndex: 1,
       });
       return { run: toPublicRun(run), ...first };
     } catch (err) {
@@ -517,6 +567,7 @@ class TradingEngine {
         direction: legDirection(run.direction),
         stake: Number(run.stake),
         durationSec: run.duration_sec as Duration,
+        symbol: run.symbol,
         runId: run.id,
         runIndex: run.completed_count + 1,
       });
@@ -541,9 +592,13 @@ class TradingEngine {
     }
   }
 
-  /** Settles one trade against the live feed. Safe to call twice. */
-  async settle(tradeId: string, reason: 'EXPIRY' | 'STOP_OUT' | 'TAKE_PROFIT'): Promise<void> {
-    const exit = priceFeed.current().price;
+  /** Settles one trade against its own market's feed. Safe to call twice. */
+  async settle(
+    tradeId: string,
+    reason: 'EXPIRY' | 'STOP_OUT' | 'TAKE_PROFIT',
+    symbol: string = SYMBOL
+  ): Promise<void> {
+    const exit = priceFeed.current(symbol).price;
     this.live.delete(tradeId);
 
     const { data, error } = await db.rpc('fpesa_settle_trade', {
@@ -555,7 +610,7 @@ class TradingEngine {
     if (error) {
       console.error('[trading] settle failed for ' + tradeId + ':', error.message);
       // Retry once shortly; a transient DB blip should not strand a stake.
-      this.scheduleSettlement(tradeId, 3000);
+      this.scheduleSettlement(tradeId, 3000, symbol);
       return;
     }
 

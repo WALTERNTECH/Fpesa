@@ -19,6 +19,8 @@ import type {
   User,
   DeskState,
   Run,
+  Instrument,
+  MarketSummary,
 } from '../lib/types';
 
 export type Toast = {
@@ -40,6 +42,15 @@ type AppValue = {
   tickDir: 'up' | 'down' | null;
   connected: boolean;
   online: number;
+
+  /* Markets. The selected instrument drives the chart, the ticket and the
+     socket subscription; everything else in the app reads it from here so the
+     chart and the trade panel can never disagree about what is being traded. */
+  instruments: MarketSummary[];
+  symbol: string;
+  setSymbol: (symbol: string) => void;
+  instrument: Instrument | null;
+  multiplier: number;
 
   accountMode: AccountMode;
   setAccountMode: (mode: AccountMode) => void;
@@ -89,7 +100,7 @@ type AppValue = {
 
 const DEFAULT_CONFIG: PlatformConfig = {
   minStake: 50,
-  maxStake: 150000,
+  maxStake: 1000000,
   payoutRate: 0.87,
   durations: [5, 10, 15, 30, 60],
   multipliers: { '5': 2000, '10': 1400, '15': 1150, '30': 800, '60': 575 },
@@ -97,12 +108,15 @@ const DEFAULT_CONFIG: PlatformConfig = {
   houseEdge: 0.11,
   turnoverMultiple: 11.7,
   symbol: 'FPX100',
-  symbolName: 'Fpesa Volatility 100',
+  symbolName: 'Volatility 100 Index',
+  instruments: [],
   provablyFair: true,
   adminUrl: '',
   desk: { open: true, reason: null, ratio: 0, cap: 0.3, reopenAt: 0.24, minBase: 20000, armed: false },
   minDeposit: 50,
+  maxDeposit: 0,
   minWithdrawal: 100,
+  maxWithdrawal: 250000,
   supportTelegram: 'https://t.me/KRYPTONinv',
   demoStartingBalance: 10000,
 };
@@ -142,9 +156,14 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
   const [desk, setDesk] = useState<DeskState>(DEFAULT_CONFIG.desk);
   const [run, setRun] = useState<Run | null>(null);
   const [autoBusy, setAutoBusy] = useState(false);
+  const [instruments, setInstruments] = useState<MarketSummary[]>([]);
+  const [symbol, setSymbolState] = useState<string>(DEFAULT_CONFIG.symbol);
   const autoRunCount = 3;
 
   const lastPrice = useRef(0);
+  // Read inside the socket handler, which is registered once and must not be
+  // torn down and rebuilt on every market switch.
+  const symbolRef = useRef(DEFAULT_CONFIG.symbol);
   const toastId = useRef(0);
   const flashTimer = useRef<number | null>(null);
 
@@ -167,20 +186,39 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
     let cancelled = false;
 
     (async () => {
-      const [cfg, me, q] = await Promise.allSettled([
+      // The market to open on: whatever they were last looking at, as long as
+      // it is still offered. Falls back to the server's default.
+      const remembered = (() => {
+        try {
+          return window.localStorage.getItem('fpesa.symbol');
+        } catch {
+          return null;
+        }
+      })();
+
+      const [cfg, me, q, mk] = await Promise.allSettled([
         api.get<PlatformConfig>('/market/config'),
         api.get<{ user: User | null }>('/auth/me'),
-        api.get<Quote>('/market/quote'),
+        api.get<Quote>('/market/quote' + (remembered ? '?symbol=' + remembered : '')),
+        api.get<{ instruments: MarketSummary[] }>('/market/instruments'),
       ]);
       if (cancelled) return;
 
+      let opening = DEFAULT_CONFIG.symbol;
       if (cfg.status === 'fulfilled') {
         setConfig(cfg.value);
         if (cfg.value.desk) setDesk(cfg.value.desk);
         setStake(String(cfg.value.minStake));
         if (cfg.value.durations.includes(10)) setDuration(10);
         else if (cfg.value.durations[0]) setDuration(cfg.value.durations[0]);
+        opening = cfg.value.symbol;
+        if (remembered && cfg.value.instruments.some((i) => i.symbol === remembered)) {
+          opening = remembered;
+        }
+        setSymbolState(opening);
+        marketSocket.watch(opening);
       }
+      if (mk.status === 'fulfilled') setInstruments(mk.value.instruments);
       if (me.status === 'fulfilled' && me.value.user) {
         setUser(me.value.user);
         // A returning trader with real funds lands on their live account.
@@ -216,12 +254,41 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
     };
   }, []);
 
+  useEffect(() => {
+    symbolRef.current = symbol;
+  }, [symbol]);
+
+  // The switcher shows a live price against every market, but only the selected
+  // one streams over the socket. A slow poll keeps the rest honest without
+  // subscribing to five tick streams.
+  useEffect(() => {
+    let stop = false;
+    const pull = async (): Promise<void> => {
+      try {
+        const res = await api.get<{ instruments: MarketSummary[] }>('/market/instruments');
+        if (!stop) setInstruments(res.instruments);
+      } catch {
+        // Keep the last known prices.
+      }
+    };
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void pull();
+    }, 10_000);
+    return () => {
+      stop = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
   useEffect(() => marketSocket.onStatus(setConnected), []);
 
   // --------------------------------------------------------- socket routing
   useEffect(() => {
     return marketSocket.on((msg: ServerMessage) => {
       if (msg.type === 'tick') {
+        // A switch leaves the previous market's last tick in flight. Painting
+        // it would put another instrument's price on this chart for a frame.
+        if (msg.symbol !== symbolRef.current) return;
         setPrice(msg.price);
         if (msg.price !== lastPrice.current) {
           setTickDir(msg.price > lastPrice.current ? 'up' : 'down');
@@ -422,6 +489,22 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
 
   const balance = user ? (accountMode === 'demo' ? user.demoBalance : user.realBalance) : 0;
 
+  /**
+   * The active instrument. Multipliers differ per market — they scale inversely
+   * with volatility so the odds stay identical — so the panel must read this
+   * one rather than the platform-wide default.
+   */
+  const instrument = useMemo<Instrument | null>(() => {
+    return (
+      instruments.find((i) => i.symbol === symbol) ??
+      config.instruments.find((i) => i.symbol === symbol) ??
+      null
+    );
+  }, [instruments, config.instruments, symbol]);
+
+  const multiplier =
+    instrument?.multipliers?.[String(duration)] ?? config.multipliers[String(duration)] ?? 1000;
+
   // Validated once here so the panel and the sticky bar cannot disagree about
   // whether the current ticket is placeable.
   const stakeAmount = Number(stake);
@@ -461,6 +544,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       try {
         const res = await api.post<{ trade: Trade; balance: number }>('/trades', {
           direction, stake: amount, durationSec: duration, accountMode,
+          symbol: symbolRef.current,
         });
         setOpenTrades((prev) => [...prev, res.trade]);
         setUser((prev) => {
@@ -496,6 +580,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
         durationSec: duration,
         accountMode,
         count: autoRunCount,
+        symbol: symbolRef.current,
       });
       setRun(res.run);
       setOpenTrades((prev) => [...prev, res.trade]);
@@ -512,6 +597,45 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
     }
   }, [user, stake, duration, accountMode, autoBusy, autoRunCount]);
 
+  /**
+   * Switches market. The socket subscription, the chart and the ticket all
+   * follow from this one value, and the new price is fetched immediately rather
+   * than waiting for the next tick so the panel never quotes the old market.
+   */
+  const setSymbol = useCallback(
+    (next: string) => {
+      if (next === symbolRef.current) return;
+      symbolRef.current = next;
+      setSymbolState(next);
+      setTradeError(null);
+      marketSocket.watch(next);
+      try {
+        window.localStorage.setItem('fpesa.symbol', next);
+      } catch {
+        // Private browsing: the choice simply does not persist.
+      }
+
+      // Show the switcher's last known price straight away, then confirm it.
+      const known = instruments.find((i) => i.symbol === next);
+      if (known) {
+        setPrice(known.price);
+        lastPrice.current = known.price;
+      }
+      setTickDir(null);
+
+      void api
+        .get<Quote>('/market/quote?symbol=' + next)
+        .then((q) => {
+          if (symbolRef.current !== next) return;
+          setQuote(q);
+          setPrice(q.price);
+          lastPrice.current = q.price;
+        })
+        .catch(() => undefined);
+    },
+    [instruments]
+  );
+
   const openModal = useCallback((kind: ModalKind) => setModal(kind), []);
   const closeModal = useCallback(() => setModal(null), []);
 
@@ -525,6 +649,11 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       tickDir,
       connected,
       online,
+      instruments,
+      symbol,
+      setSymbol,
+      instrument,
+      multiplier,
       accountMode,
       setAccountMode,
       balance,
@@ -557,6 +686,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
     }),
     [
       ready, config, user, quote, price, tickDir, connected, online, accountMode,
+      instruments, symbol, setSymbol, instrument, multiplier,
       balance, openTrades, stake, duration, tradeBusy, tradeError, stakeIssue,
       canTrade, submitTrade, desk, autoRunCount, run, autoBusy, startAuto, modal, openModal, closeModal, login, register,
       logout, refreshUser, resetDemo, toasts, pushToast,

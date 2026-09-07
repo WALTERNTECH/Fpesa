@@ -9,11 +9,10 @@ export function TradePanel(): JSX.Element {
     user, config, accountMode, setAccountMode, balance, openModal,
     stake, setStake, duration, setDuration,
     tradeBusy, tradeError, setTradeError, stakeIssue, canTrade, submitTrade, desk,
-    autoRunCount, run, startAuto, autoBusy,
+    autoRunCount, run, startAuto, autoBusy, symbol, multiplier,
   } = useApp();
 
   const stakeAmount = Number(stake);
-  const multiplier = config.multipliers?.[String(duration)] ?? 1000;
   const maxProfit = Number.isFinite(stakeAmount)
     ? stakeAmount * config.maxProfitMultiple
     : 0;
@@ -44,7 +43,7 @@ export function TradePanel(): JSX.Element {
         <div className="card-head">
           <div className="section-title">
             <span className="dot" />
-            Trade {config.symbol}
+            Trade {symbol}
           </div>
           <span className="eyebrow">×{multiplier.toLocaleString('en-KE')}</span>
         </div>
@@ -107,7 +106,11 @@ export function TradePanel(): JSX.Element {
                     setTradeError(null);
                   }}
                 >
-                  {value >= 1000 ? value / 1000 + 'K' : value}
+                  {value >= 1000000
+                    ? value / 1000000 + 'M'
+                    : value >= 1000
+                      ? value / 1000 + 'K'
+                      : value}
                 </button>
               ))}
             </div>

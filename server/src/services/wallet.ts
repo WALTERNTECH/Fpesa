@@ -77,8 +77,9 @@ function callbackUrl(): string {
   return env.publicUrl + '/api/webhooks/intasend/' + env.webhookToken;
 }
 
-const MAX_DEPOSIT = 250_000;
-const MAX_WITHDRAWAL = 250_000;
+/** Both are configurable; 0 removes our own ceiling. See env.ts. */
+const MAX_DEPOSIT = env.maxDeposit;
+const MAX_WITHDRAWAL = env.maxWithdrawal;
 
 // --------------------------------------------------------------- deposits
 export async function startDeposit(user: {
@@ -93,7 +94,7 @@ export async function startDeposit(user: {
       'Minimum deposit is KSh ' + env.minDeposit + '.'
     );
   }
-  if (value > MAX_DEPOSIT) {
+  if (MAX_DEPOSIT > 0 && value > MAX_DEPOSIT) {
     throw new WalletError(
       'AMOUNT_TOO_HIGH',
       'Maximum single deposit is KSh ' + MAX_DEPOSIT.toLocaleString('en-KE') + '.'
@@ -164,10 +165,11 @@ export async function startWithdrawal(user: {
       'Minimum withdrawal is KSh ' + env.minWithdrawal + '.'
     );
   }
-  if (value > MAX_WITHDRAWAL) {
+  if (MAX_WITHDRAWAL > 0 && value > MAX_WITHDRAWAL) {
     throw new WalletError(
       'AMOUNT_TOO_HIGH',
-      'Maximum single withdrawal is KSh ' + MAX_WITHDRAWAL.toLocaleString('en-KE') + '.'
+      'Maximum single withdrawal is KSh ' + MAX_WITHDRAWAL.toLocaleString('en-KE') +
+        '. Take it in more than one payout — the limit is per transfer, not per day.'
     );
   }
 

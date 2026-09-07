@@ -168,8 +168,7 @@ export async function startWithdrawal(user: {
   if (MAX_WITHDRAWAL > 0 && value > MAX_WITHDRAWAL) {
     throw new WalletError(
       'AMOUNT_TOO_HIGH',
-      'Maximum single withdrawal is KSh ' + MAX_WITHDRAWAL.toLocaleString('en-KE') +
-        '. Take it in more than one payout — the limit is per transfer, not per day.'
+      'Maximum single withdrawal is KSh ' + MAX_WITHDRAWAL.toLocaleString('en-KE') + '.'
     );
   }
 

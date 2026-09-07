@@ -159,12 +159,15 @@ export const env = {
   maxDeposit: num('MAX_DEPOSIT', 0),
   minWithdrawal: num('MIN_WITHDRAWAL', 100),
   /**
-   * Ceiling on a single payout. Unlike deposits this stays set, because a B2C
-   * transfer above the provider's per-transaction limit fails *after* the
-   * balance has been reserved, which is a far worse experience than being told
-   * up front to take it in two. 0 disables it.
+   * Ceiling on a single payout. **0 means no ceiling of ours**, which is the
+   * default: a trader who has traded and won can take out what they have won,
+   * with no daily limit and no per-payout limit imposed by this platform.
+   *
+   * A transfer larger than the provider will carry still fails at the provider.
+   * That path is safe — the reservation is released and the balance comes
+   * straight back — so the failure costs the trader time, not money.
    */
-  maxWithdrawal: num('MAX_WITHDRAWAL', 250000),
+  maxWithdrawal: num('MAX_WITHDRAWAL', 0),
 
   supportTelegram: str('SUPPORT_TELEGRAM_URL', 'https://t.me/KRYPTONinv'),
 };

@@ -306,35 +306,41 @@ async function liveExposure(price: number): Promise<{
 // ------------------------------------------------------------ user accounts
 
 /**
- * Account lookup. Deliberately requires a search term rather than listing
- * everyone: an operator adjusting one balance should be looking at one account,
- * and an endpoint that dumps the whole customer book is a much bigger thing to
- * leave lying behind a session cookie.
+ * The register: every account, newest first.
+ *
+ * An optional `q` narrows it by username or phone. It used to be mandatory,
+ * which meant an operator had to already know who they were looking for before
+ * they could see anyone — no use at all for "who signed up today" or for
+ * finding the account that just phoned about a missing deposit.
  */
 adminRouter.get('/users', async (req, res) => {
   const q = String(req.query.q ?? '').trim();
-  if (q.length < 2) {
-    res.status(400).json({
-      error: 'QUERY_TOO_SHORT',
-      message: 'Enter at least two characters of a username or phone number.',
-    });
-    return;
-  }
+  const limit = Math.min(Number(req.query.limit ?? 100) || 100, 500);
+  const offset = Math.max(Number(req.query.offset ?? 0) || 0, 0);
 
-  const { data, error } = await db
+  let query = db
     .from('users')
-    .select('id, username, phone, demo_balance, real_balance, is_admin, is_active, created_at, last_seen_at')
-    .or('username.ilike.%' + q + '%,phone.ilike.%' + q + '%')
+    .select(
+      'id, username, phone, demo_balance, real_balance, is_admin, is_active, created_at, last_seen_at',
+      { count: 'exact' }
+    )
     .order('created_at', { ascending: false })
-    .limit(25);
+    .range(offset, offset + limit - 1);
+
+  if (q.length > 0) query = query.or('username.ilike.%' + q + '%,phone.ilike.%' + q + '%');
+
+  const { data, error, count } = await query;
 
   if (error) {
-    console.error('[admin] user search failed:', error.message);
-    res.status(500).json({ error: 'LOAD_FAILED', message: 'Could not search accounts.' });
+    console.error('[admin] user list failed:', error.message);
+    res.status(500).json({ error: 'LOAD_FAILED', message: 'Could not load accounts.' });
     return;
   }
 
   res.json({
+    total: count ?? 0,
+    offset,
+    limit,
     users: ((data ?? []) as Array<Record<string, unknown>>).map((u) => ({
       id: u.id,
       username: u.username,
@@ -351,7 +357,7 @@ adminRouter.get('/users', async (req, res) => {
 
 /** One account in full, with its recent money movements and adjustments. */
 adminRouter.get('/users/:id', async (req, res) => {
-  const [userRes, txRes, adjRes, stmtRes] = await Promise.all([
+  const [userRes, txRes, adjRes, stmtRes, ovRes] = await Promise.all([
     db.from('users')
       .select('id, username, phone, demo_balance, real_balance, is_admin, is_active, created_at, last_seen_at')
       .eq('id', req.params.id)
@@ -367,6 +373,11 @@ adminRouter.get('/users/:id', async (req, res) => {
       .order('created_at', { ascending: false })
       .limit(25),
     db.rpc('fpesa_user_statement', { p_user: req.params.id }),
+    db.from('statement_override_log')
+      .select('id, deposits, withdrawals, trades, net_vs_deposits, reason, created_at')
+      .eq('user_id', req.params.id)
+      .order('created_at', { ascending: false })
+      .limit(10),
   ]);
 
   const u = userRes.data as Record<string, unknown> | null;
@@ -390,6 +401,7 @@ adminRouter.get('/users/:id', async (req, res) => {
     statement: stmtRes.data ?? null,
     transactions: (txRes.data ?? []) as unknown[],
     adjustments: (adjRes.data ?? []) as unknown[],
+    statementEdits: (ovRes.data ?? []) as unknown[],
   });
 });
 
@@ -484,6 +496,92 @@ adminRouter.post('/users/:id/balance', async (req, res) => {
     demoBalance: Number(result.demoBalance),
     realBalance: Number(result.realBalance),
   });
+});
+
+/**
+ * Corrects the lifetime figures on an account.
+ *
+ * A field left empty returns that figure to what the records actually say, so
+ * an override can always be undone. The live balance is not editable here on
+ * purpose — it is spendable money, so it goes through the balance adjustment
+ * above and its own audit trail. Letting a displayed balance drift away from
+ * the one a trader can stake would be a bug with someone's money in it.
+ */
+adminRouter.post('/users/:id/statement', async (req, res) => {
+  const body = req.body as Record<string, unknown>;
+  const reason = String(body.reason ?? '').trim();
+
+  if (reason.length < 3) {
+    res.status(400).json({
+      error: 'REASON_REQUIRED',
+      message: 'Give a reason — it is stored against the correction.',
+    });
+    return;
+  }
+
+  /** '' and null both mean "use the records"; anything else must be a number. */
+  const optional = (raw: unknown): number | null | undefined => {
+    if (raw === undefined || raw === null || raw === '') return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) return undefined;
+    return n;
+  };
+
+  const deposits = optional(body.deposits);
+  const withdrawals = optional(body.withdrawals);
+  const trades = optional(body.trades);
+  // The net figure is the only one that may legitimately be negative — it is
+  // profit and loss against everything paid in.
+  const netRaw = body.netVsDeposits;
+  const net =
+    netRaw === undefined || netRaw === null || netRaw === ''
+      ? null
+      : Number.isFinite(Number(netRaw))
+        ? Number(netRaw)
+        : undefined;
+
+  if (deposits === undefined || withdrawals === undefined || trades === undefined || net === undefined) {
+    res.status(400).json({
+      error: 'INVALID_VALUE',
+      message: 'Amounts must be numbers, and deposits, withdrawals and trades cannot be negative.',
+    });
+    return;
+  }
+
+  const { data, error } = await db.rpc('fpesa_set_statement_override', {
+    p_admin: req.user!.id,
+    p_user: req.params.id,
+    p_deposits: deposits,
+    p_withdrawals: withdrawals,
+    p_trades: trades === null ? null : Math.round(trades),
+    p_net: net,
+    p_reason: reason,
+  });
+
+  if (error) {
+    const code = pgErrorCode(error.message);
+    const known: Record<string, [number, string]> = {
+      USER_NOT_FOUND: [404, 'Account not found.'],
+      REASON_REQUIRED: [400, 'Give a reason for the correction.'],
+      NEGATIVE_VALUE: [400, 'Deposits, withdrawals and trades cannot be negative.'],
+    };
+    const hit = known[code ?? ''];
+    if (hit) {
+      res.status(hit[0]).json({ error: code, message: hit[1] });
+      return;
+    }
+    console.error('[admin] statement override failed:', error.message);
+    res.status(500).json({ error: 'OVERRIDE_FAILED', message: 'Could not save the correction.' });
+    return;
+  }
+
+  const cleared = deposits === null && withdrawals === null && trades === null && net === null;
+  console.log(
+    '[admin] ' + req.user!.username + (cleared ? ' cleared' : ' set') +
+    ' statement figures for ' + req.params.id + ': ' + reason
+  );
+
+  res.json({ ok: true, statement: data });
 });
 
 /** Every manual adjustment made on the platform, newest first. */

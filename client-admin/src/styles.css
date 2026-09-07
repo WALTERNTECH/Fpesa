@@ -267,3 +267,41 @@ td.down { color: var(--down); font-weight: 600; }
 }
 
 td.ref { font-size: 11px; color: var(--subtle); }
+
+/* ------------------------------------------------------- accounts register */
+.acct-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.acct-head h2 { margin: 0; }
+.acct-search {
+  flex: 1 1 220px;
+  max-width: 320px;
+  min-height: 38px;
+  padding: 0 11px;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--ink, #0a0d14);
+  background: var(--white);
+  border: 1px solid var(--line-strong, rgba(10, 13, 20, 0.14));
+  border-radius: 9px;
+}
+
+/* The row whose account is open below, so a long register does not leave the
+   operator wondering which one the editors underneath belong to. */
+tr.is-open > td {
+  background: var(--blue-soft, #ebf1fe);
+  font-weight: 600;
+}
+
+h2 .close {
+  float: right;
+  margin-top: -2px;
+  font-weight: 500;
+}
+
+.adjust .note.nomargin { margin: 0; font-size: 12px; line-height: 1.5; }

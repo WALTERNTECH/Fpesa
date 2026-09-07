@@ -625,6 +625,13 @@ function Accounts(): JSX.Element {
     setBusy(true); setError(null);
     try {
       setDetail(await call<AccountDetail>('/admin/users/' + id));
+      // The editors render below a list that can be several screens long, so
+      // on a phone the tap would otherwise appear to do nothing at all.
+      window.setTimeout(() => {
+        document.getElementById('account-detail')?.scrollIntoView({
+          behavior: 'smooth', block: 'start',
+        });
+      }, 60);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load the account.');
     } finally {
@@ -661,40 +668,55 @@ function Accounts(): JSX.Element {
         {users && busy && <p className="muted">Refreshing…</p>}
         {users && !busy && users.length === 0 && <p className="muted">No accounts matched.</p>}
 
+        {/* Cards, not a table. The console is used on a phone, and a
+            seven-column table there scrolls sideways with the action in the
+            last column — the button was present the whole time and simply
+            off-screen, which is the same as not existing. */}
         {users && users.length > 0 && (
-          <div className="tw">
-            <table>
-              <thead>
-                <tr>
-                  <th>Username</th><th>Phone</th><th>Live balance</th>
-                  <th>Demo</th><th>Joined</th><th>Last seen</th><th />
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.id} className={target && target.id === u.id ? 'is-open' : undefined}>
-                    <td>{u.username}{u.isAdmin && <span className="pill">admin</span>}</td>
-                    <td>{u.phone}</td>
-                    <td className={u.realBalance > 0 ? 'up' : undefined}>{ksh(u.realBalance)}</td>
-                    <td className="muted">{ksh(u.demoBalance)}</td>
-                    <td>{day(u.createdAt)}</td>
-                    <td className="muted">{ago(u.lastSeenAt)} ago</td>
-                    <td>
-                      <button className="btn ghost sm" disabled={busy} onClick={() => void open(u.id)}>
-                        {target && target.id === u.id ? 'Open' : 'Edit'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="acct-list">
+            {users.map((u) => {
+              const isOpen = Boolean(target && target.id === u.id);
+              return (
+                <div className={'acct-card' + (isOpen ? ' is-open' : '')} key={u.id}>
+                  <div className="ac-top">
+                    <span className="ac-name">
+                      {u.username}
+                      {u.isAdmin && <span className="pill">admin</span>}
+                    </span>
+                    <span className="ac-phone">{u.phone}</span>
+                  </div>
+
+                  <div className="ac-figs">
+                    <span className="k">Live balance</span>
+                    <span className={'v' + (u.realBalance > 0 ? ' up' : '')}>{ksh(u.realBalance)}</span>
+                    <span className="k">Demo</span>
+                    <span className="v muted">{ksh(u.demoBalance)}</span>
+                  </div>
+
+                  <div className="ac-meta">
+                    Joined {day(u.createdAt)} · seen {ago(u.lastSeenAt)} ago
+                  </div>
+
+                  <button
+                    className={'btn ac-edit' + (isOpen ? ' ghost' : '')}
+                    disabled={busy}
+                    onClick={() => {
+                      if (isOpen) { setDetail(null); return; }
+                      void open(u.id);
+                    }}
+                  >
+                    {isOpen ? 'Close' : 'Edit balance & figures'}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
 
       {target && detail && (
         <>
-          <section>
+          <section id="account-detail">
             <h2>
               {target.username}
               <button className="btn ghost sm close" onClick={() => setDetail(null)}>Close</button>

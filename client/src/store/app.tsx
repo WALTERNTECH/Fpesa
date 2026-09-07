@@ -69,6 +69,8 @@ type AppValue = {
   tradeError: string | null;
   setTradeError: (message: string | null) => void;
   stakeIssue: string | null;
+  /** The ceiling that actually applies right now, for the selected account. */
+  stakeCeiling: number;
   canTrade: boolean;
   desk: DeskState;
 
@@ -101,6 +103,7 @@ type AppValue = {
 const DEFAULT_CONFIG: PlatformConfig = {
   minStake: 50,
   maxStake: 1000000,
+  maxStakeLive: 0,
   payoutRate: 0.87,
   durations: [5, 10, 15, 30, 60],
   multipliers: { '5': 2000, '10': 1400, '15': 1150, '30': 800, '60': 575 },
@@ -507,12 +510,27 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
   // Validated once here so the panel and the sticky bar cannot disagree about
   // whether the current ticket is placeable.
   const stakeAmount = Number(stake);
+
+  /**
+   * Live trades are capped by what the book could pay if they won, which moves
+   * with deposits, withdrawals and open positions. Demo money is owed to nobody,
+   * so it keeps the full configured range.
+   */
+  const stakeCeiling =
+    accountMode === 'real'
+      ? Math.max(0, Math.min(config.maxStake, config.maxStakeLive))
+      : config.maxStake;
+
   const stakeIssue = ((): string | null => {
     if (stake.trim() === '') return null;
     if (!Number.isFinite(stakeAmount)) return 'Enter a valid amount.';
     if (stakeAmount < config.minStake) return 'Minimum trade is KSh ' + config.minStake + '.';
-    if (stakeAmount > config.maxStake) {
-      return 'Maximum trade is KSh ' + config.maxStake.toLocaleString('en-KE') + '.';
+    if (stakeAmount > stakeCeiling) {
+      return accountMode === 'real' && stakeCeiling < config.maxStake
+        ? stakeCeiling < config.minStake
+          ? 'Live trading is at capacity for the moment. Demo is open.'
+          : 'Largest live trade right now is KSh ' + stakeCeiling.toLocaleString('en-KE') + '.'
+        : 'Maximum trade is KSh ' + config.maxStake.toLocaleString('en-KE') + '.';
     }
     if (user && stakeAmount > balance) {
       return accountMode === 'demo'
@@ -525,7 +543,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
   const canTrade =
     Number.isFinite(stakeAmount) &&
     stakeAmount >= config.minStake &&
-    stakeAmount <= config.maxStake &&
+    stakeAmount <= stakeCeiling &&
     (!user || stakeAmount <= balance) &&
     price > 0;
 
@@ -665,6 +683,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       tradeError,
       setTradeError,
       stakeIssue,
+      stakeCeiling,
       canTrade,
       submitTrade,
       desk,
@@ -687,7 +706,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       ready, config, user, quote, price, tickDir, connected, online, accountMode,
       instruments, symbol, setSymbol, instrument, multiplier,
       balance, openTrades, stake, duration, tradeBusy, tradeError, stakeIssue,
-      canTrade, submitTrade, desk, autoRunCount, run, autoBusy, startAuto, modal, openModal, closeModal, login, register,
+      canTrade, stakeCeiling, submitTrade, desk, autoRunCount, run, autoBusy, startAuto, modal, openModal, closeModal, login, register,
       logout, refreshUser, resetDemo, toasts, pushToast,
     ]
   );

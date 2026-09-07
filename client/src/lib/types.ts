@@ -172,6 +172,8 @@ export type HistoryResponse = {
 export type PlatformConfig = {
   minStake: number;
   maxStake: number;
+  /** What the book can currently cover on a live trade. Demo ignores it. */
+  maxStakeLive: number;
   payoutRate: number;
   durations: number[];
   multipliers: Record<string, number>;

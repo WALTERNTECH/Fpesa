@@ -9,7 +9,7 @@ export function TradePanel(): JSX.Element {
     user, config, accountMode, setAccountMode, balance, openModal,
     stake, setStake, duration, setDuration,
     tradeBusy, tradeError, setTradeError, stakeIssue, canTrade, submitTrade, desk,
-    autoRunCount, run, startAuto, autoBusy, symbol, multiplier,
+    autoRunCount, run, startAuto, autoBusy, symbol, multiplier, stakeCeiling,
   } = useApp();
 
   const stakeAmount = Number(stake);
@@ -28,10 +28,10 @@ export function TradePanel(): JSX.Element {
     // Four chips spanning the range, not four clustered at the floor. The old
     // ladder took the lowest four of a fixed list, which on a 50–150,000 range
     // topped out at 1,000 and left everything above it reachable only by typing.
-    const options = [config.minStake, 500, 5000, config.maxStake];
-    return Array.from(new Set(options.filter((v) => v >= config.minStake && v <= config.maxStake)))
+    const options = [config.minStake, 500, 5000, stakeCeiling];
+    return Array.from(new Set(options.filter((v) => v >= config.minStake && v <= stakeCeiling)))
       .sort((a, b) => a - b);
-  }, [config.minStake, config.maxStake]);
+  }, [config.minStake, stakeCeiling]);
 
   // Real trading is gated while the book is over its daily payout target.
   const deskClosed = accountMode === 'real' && !desk.open;
@@ -76,7 +76,7 @@ export function TradePanel(): JSX.Element {
             <div className="field-label">
               <span>Trade amount</span>
               <span className="hint">
-                {ksh(config.minStake, true)} – {ksh(config.maxStake, true)}
+                {ksh(config.minStake, true)} – {ksh(stakeCeiling, true)}
               </span>
             </div>
             <div className={'amount-input' + (stakeIssue ? ' invalid' : '')}>
@@ -86,7 +86,7 @@ export function TradePanel(): JSX.Element {
                 inputMode="numeric"
                 value={stake}
                 min={config.minStake}
-                max={config.maxStake}
+                max={stakeCeiling}
                 step={10}
                 onChange={(e) => {
                   setStake(e.target.value);

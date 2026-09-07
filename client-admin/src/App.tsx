@@ -21,6 +21,10 @@ type Overview = {
     open: boolean; ratio: number; cap: number; reopenAt: number;
     armed: boolean; minBase: number;
   };
+  float: {
+    cash: number; operatorFloat: number; owed: number;
+    atRisk: number; headroom: number; maxLiveStake: number;
+  };
   instrument: {
     symbol: string; name: string; mode: string; price: number; changePct: number;
     provablyFair: boolean; epoch: number | null; commitment: string | null;
@@ -211,6 +215,38 @@ function Dashboard({ onOut }: { onOut: () => void }): JSX.Element {
                 is the sign the model is behaving; a drift there shows up long before the bank balance does.
               </p>
             </section>
+
+            {d.float && (
+              <section>
+                <h2>Can the book pay?</h2>
+                <div className="grid">
+                  <Stat k="Cash held" v={ksh(d.float.cash)} />
+                  <Stat k="Your float" v={ksh(d.float.operatorFloat)} />
+                  <Stat k="Owed to traders" v={ksh(d.float.owed)} tone="down" />
+                  <Stat k="At risk on open trades" v={ksh(d.float.atRisk)} tone="down" />
+                  <Stat
+                    k="Headroom"
+                    v={ksh(d.float.headroom)}
+                    tone={d.float.headroom > 0 ? 'up' : 'down'}
+                  />
+                  <Stat k="Largest live trade" v={ksh(d.float.maxLiveStake)} />
+                </div>
+                <p className="note">
+                  <b>Headroom</b> is what is left after every trader&rsquo;s balance and the
+                  worst case on every open position. A live trade only opens if the book can
+                  cover its maximum payout, so a win that can happen is a win that can be
+                  paid — and the largest live trade is simply headroom divided by the{' '}
+                  {d.settings.maxProfitMultiple}× profit cap.
+                  {d.float.maxLiveStake < d.settings.minStake && (
+                    <>
+                      {' '}<b>Live trading cannot open a position right now.</b> Raise
+                      OPERATOR_FLOAT to the amount actually sitting in the payout account,
+                      or let the house margin build it up.
+                    </>
+                  )}
+                </p>
+              </section>
+            )}
 
             <section>
               <h2>Desk</h2>

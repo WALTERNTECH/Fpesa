@@ -168,6 +168,23 @@ export const env = {
    * straight back — so the failure costs the trader time, not money.
    */
   maxWithdrawal: num('MAX_WITHDRAWAL', 0),
+  /**
+   * The operator's own capital, in shillings, available to pay winners.
+   *
+   * This is the number that decides how large a live position the book can
+   * safely carry. A position's worst case is stake x TRADE_MAX_PROFIT_MULTIPLE,
+   * and a position only opens if the book can cover that — so a win that can
+   * happen is always a win that can be paid.
+   *
+   * At 0 the house has nothing of its own behind it. Customer deposits cannot
+   * fund customer winnings: a trader who deposits 1,000 and wins 3,000 has to
+   * be paid from somewhere, and their own 1,000 is not enough. So at 0 the
+   * headroom stays near zero and live trading cannot open a position until the
+   * accumulated house margin has built some.
+   *
+   * Set it to the amount actually sitting in the payout account.
+   */
+  operatorFloat: num('OPERATOR_FLOAT', 0),
 
   supportTelegram: str('SUPPORT_TELEGRAM_URL', 'https://t.me/KRYPTONinv'),
 };

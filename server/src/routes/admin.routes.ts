@@ -4,6 +4,7 @@ import { db, pgErrorCode } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
 import { notifyBalance } from './internal.routes.js';
 import { exposureGuard } from '../services/exposure.js';
+import { solvency } from '../services/solvency.js';
 import { priceFeed, SYMBOL } from '../services/prices.js';
 import { ALLOWED_DURATIONS, multiplierFor } from '../services/trading.js';
 
@@ -127,6 +128,7 @@ adminRouter.get('/overview', async (_req, res) => {
   }
 
   const day = await exposureGuard.read(0);
+  const book = await solvency.read(0);
   const remote = env.appMode === 'admin';
 
   let instrument: InstrumentView | null;
@@ -181,6 +183,12 @@ adminRouter.get('/overview', async (_req, res) => {
       armed: day.deposits >= env.dailyPayoutMinBase, minBase: env.dailyPayoutMinBase,
     },
     exposure: day,
+    /**
+     * Whether the book can pay what it might owe. headroom is what is left
+     * after every live balance and the worst case on every open position; it is
+     * what limits how large a live trade may be.
+     */
+    float: { ...book, maxLiveStake: solvency.maxLiveStake(book.headroom) },
     instrument,
     upstream: remote ? { ok: upstreamOk, url: env.upstreamUrl } : undefined,
     settings: {

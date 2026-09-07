@@ -3,6 +3,7 @@ import { db, pgErrorCode } from '../lib/db.js';
 import { priceFeed, SYMBOL } from './prices.js';
 import { getInstrument, instrumentOr } from './instruments.js';
 import { exposureGuard } from './exposure.js';
+import { solvency } from './solvency.js';
 import { hub } from '../realtime/hub.js';
 
 export type TradeRow = {
@@ -440,6 +441,9 @@ class TradingEngine {
       p_stop_out: stopOut,
       p_take_profit: takeProfit,
       p_max_profit: Math.round(rounded * env.maxProfitMultiple * 100) / 100,
+      // Checked inside the same transaction that debits the balance, so two
+      // trades arriving together cannot both pass a limit only one fits in.
+      p_operator_float: env.operatorFloat,
     });
 
     if (error) {
@@ -450,6 +454,21 @@ class TradingEngine {
           mode === 'demo'
             ? 'Your demo balance is too low for that amount.'
             : 'Insufficient balance. Deposit to continue trading.'
+        );
+      }
+      if (code === 'FLOAT_LIMIT') {
+        // The book cannot cover this position's maximum payout. Refusing to
+        // take the bet is the honest failure; taking it and being unable to pay
+        // the win is the one this exists to prevent.
+        const room = Number(/FLOAT_LIMIT:([0-9.]+)/.exec(error.message)?.[1] ?? 0);
+        const affordable = Math.floor(room / env.maxProfitMultiple);
+        throw new TradeError(
+          'FLOAT_LIMIT',
+          affordable >= env.minStake
+            ? 'The largest live trade available right now is KSh ' +
+              affordable.toLocaleString('en-KE') + '. Try that or less.'
+            : 'Live trading is at capacity for the moment. Demo is unaffected.',
+          503
         );
       }
       if (code === 'USER_NOT_FOUND') throw new TradeError('USER_NOT_FOUND', 'Account not found.', 404);
@@ -654,7 +673,12 @@ class TradingEngine {
       }
     }
 
-    if (trade.accountMode === 'real') void this.publishLeaderboard();
+    if (trade.accountMode === 'real') {
+      void this.publishLeaderboard();
+      // A settled position releases the headroom it was holding, so the next
+      // trader should see the larger ceiling straight away.
+      void solvency.read(0);
+    }
   }
 
   async publishLeaderboard(): Promise<void> {

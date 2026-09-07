@@ -4,6 +4,7 @@ import { getInstrument, INSTRUMENTS } from '../services/instruments.js';
 import { getNews } from '../services/news.js';
 import { ALLOWED_DURATIONS, multiplierFor } from '../services/trading.js';
 import { exposureGuard } from '../services/exposure.js';
+import { solvency } from '../services/solvency.js';
 import { analyseTrade } from '../lib/stats.js';
 import { env } from '../env.js';
 
@@ -121,8 +122,9 @@ marketRouter.get('/news', async (_req, res) => {
   res.json({ items });
 });
 
-marketRouter.get('/config', (_req, res) => {
+marketRouter.get('/config', async (_req, res) => {
   const tradeable = new Set(priceFeed.tradeableSymbols());
+  const book = await solvency.read();
   res.json({
     // Included so a client loading while the desk is shut knows immediately,
     // rather than finding out by having a tap rejected. Changes after load
@@ -130,6 +132,12 @@ marketRouter.get('/config', (_req, res) => {
     desk: exposureGuard.state(),
     minStake: env.minStake,
     maxStake: env.maxStake,
+    /**
+     * The largest live stake the book can currently cover. Demo is unaffected.
+     * Shown so the panel offers a ceiling that is real rather than letting
+     * someone type an amount that is only refused after they tap.
+     */
+    maxStakeLive: solvency.maxLiveStake(book.headroom),
     payoutRate: env.payoutRate,
     durations: [...ALLOWED_DURATIONS],
     /** Multipliers for the default market; per-market values ship with each instrument. */

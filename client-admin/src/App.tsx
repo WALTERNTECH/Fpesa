@@ -24,6 +24,7 @@ type Overview = {
   float: {
     cash: number; operatorFloat: number; owed: number;
     atRisk: number; headroom: number; maxLiveStake: number;
+    positionShare: number;
   };
   instrument: {
     symbol: string; name: string; mode: string; price: number; changePct: number;
@@ -235,8 +236,11 @@ function Dashboard({ onOut }: { onOut: () => void }): JSX.Element {
                   <b>Headroom</b> is what is left after every trader&rsquo;s balance and the
                   worst case on every open position. A live trade only opens if the book can
                   cover its maximum payout, so a win that can happen is a win that can be
-                  paid — and the largest live trade is simply headroom divided by the{' '}
-                  {d.settings.maxProfitMultiple}× profit cap.
+                  paid. One position may take at most{' '}
+                  {(d.float.positionShare * 100).toFixed(0)}% of headroom, which is what stops
+                  a trader on a winning run consuming the whole book and closing the desk to
+                  everyone else — so the largest live trade is headroom ×{' '}
+                  {(d.float.positionShare * 100).toFixed(0)}% ÷ {d.settings.maxProfitMultiple}.
                   {d.float.maxLiveStake < d.settings.minStake && (
                     <>
                       {' '}<b>Live trading cannot open a position right now.</b> Raise

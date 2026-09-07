@@ -188,7 +188,11 @@ adminRouter.get('/overview', async (_req, res) => {
      * after every live balance and the worst case on every open position; it is
      * what limits how large a live trade may be.
      */
-    float: { ...book, maxLiveStake: solvency.maxLiveStake(book.headroom) },
+    float: {
+      ...book,
+      maxLiveStake: solvency.maxLiveStake(book.headroom),
+      positionShare: env.maxPositionShare,
+    },
     instrument,
     upstream: remote ? { ok: upstreamOk, url: env.upstreamUrl } : undefined,
     settings: {

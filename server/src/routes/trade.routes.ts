@@ -244,11 +244,11 @@ tradeRouter.get('/history', requireAuth, async (req, res) => {
       volume: numeric('realVolume'),
       trades: numeric('realTrades'),
       balance: numeric('realBalance'),
-      netVsDeposits:
-        Math.round(
-          (numeric('realBalance') + numeric('withdrawals') -
-            numeric('deposits') - numeric('adjustments')) * 100
-        ) / 100,
+      // Taken from the statement rather than recomputed here. The two agree
+      // whenever the figure is derived, so a local sum looked harmless — but it
+      // silently discarded an operator's explicit correction, which is the one
+      // case the value exists to carry.
+      netVsDeposits: numeric('netVsDeposits'),
     },
   });
 });

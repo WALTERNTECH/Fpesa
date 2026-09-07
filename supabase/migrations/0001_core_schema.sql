@@ -31,7 +31,7 @@ create table if not exists public.trades (
   account_mode  text not null check (account_mode in ('demo','real')),
   symbol        text not null default 'XAUUSD',
   direction     text not null check (direction in ('BUY','SELL')),
-  stake         numeric(14,2) not null check (stake >= 50 and stake <= 20000),
+  stake         numeric(14,2) not null check (stake >= 50 and stake <= 150000),
   duration_sec  integer not null check (duration_sec in (5,10,15,30,60)),
   payout_rate   numeric(5,4) not null default 0.8700,
   entry_price   numeric(18,6) not null,

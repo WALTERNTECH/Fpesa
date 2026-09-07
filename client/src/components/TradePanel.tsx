@@ -26,10 +26,12 @@ export function TradePanel(): JSX.Element {
     : 0;
 
   const quickAmounts = useMemo(() => {
-    const options = [config.minStake, 200, 500, 1000, 5000, config.maxStake];
+    // Four chips spanning the range, not four clustered at the floor. The old
+    // ladder took the lowest four of a fixed list, which on a 50–150,000 range
+    // topped out at 1,000 and left everything above it reachable only by typing.
+    const options = [config.minStake, 500, 5000, config.maxStake];
     return Array.from(new Set(options.filter((v) => v >= config.minStake && v <= config.maxStake)))
-      .sort((a, b) => a - b)
-      .slice(0, 4);
+      .sort((a, b) => a - b);
   }, [config.minStake, config.maxStake]);
 
   // Real trading is gated while the book is over its daily payout target.

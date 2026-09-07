@@ -89,7 +89,7 @@ type AppValue = {
 
 const DEFAULT_CONFIG: PlatformConfig = {
   minStake: 50,
-  maxStake: 20000,
+  maxStake: 150000,
   payoutRate: 0.87,
   durations: [5, 10, 15, 30, 60],
   multipliers: { '5': 2000, '10': 1400, '15': 1150, '30': 800, '60': 575 },

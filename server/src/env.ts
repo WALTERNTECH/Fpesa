@@ -144,7 +144,7 @@ export const env = {
    */
   turnoverMultiple: num('WITHDRAWAL_TURNOVER_MULTIPLE', 0),
   minStake: num('TRADE_MIN_STAKE', 50),
-  maxStake: num('TRADE_MAX_STAKE', 20000),
+  maxStake: num('TRADE_MAX_STAKE', 150000),
   demoStartingBalance: num('DEMO_STARTING_BALANCE', 10000),
   minDeposit: num('MIN_DEPOSIT', 50),
   minWithdrawal: num('MIN_WITHDRAWAL', 100),

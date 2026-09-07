@@ -21,6 +21,7 @@ import { socialRouter } from './routes/social.routes.js';
 import { webhookRouter } from './routes/webhook.routes.js';
 import { fairnessRouter } from './routes/fairness.routes.js';
 import { adminRouter } from './routes/admin.routes.js';
+import { internalRouter } from './routes/internal.routes.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const isAdmin = env.appMode === 'admin';
@@ -85,6 +86,9 @@ async function main(): Promise<void> {
     app.use('/api/social', socialRouter);
     app.use('/api/webhooks', webhookRouter);
     app.use('/api/fairness', fairnessRouter);
+    // Reached only by the operations console, and only with a token signed
+    // using the shared JWT secret.
+    app.use('/api/internal', internalRouter);
   }
 
   app.use('/api', (_req, res) => {

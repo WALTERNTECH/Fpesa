@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { env } from '../env.js';
 import { db, pgErrorCode } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
-import { hub } from '../realtime/hub.js';
+import { notifyBalance } from './internal.routes.js';
 import { exposureGuard } from '../services/exposure.js';
 import { priceFeed, SYMBOL } from '../services/prices.js';
 import { ALLOWED_DURATIONS, multiplierFor } from '../services/trading.js';
@@ -465,13 +465,15 @@ adminRouter.post('/users/:id/balance', async (req, res) => {
     req.params.id + ' by ' + amount + ' (' + result.before + ' -> ' + result.after + '): ' + reason
   );
 
-  // The trader may well be looking at the screen; push the new balance rather
-  // than leaving them to discover it on their next reload.
-  hub.toUser(req.params.id, {
-    type: 'balance',
-    demoBalance: Number(result.demoBalance),
-    realBalance: Number(result.realBalance),
-  });
+  // The trader may well be looking at the screen — they have usually just
+  // phoned about this — so push the new balance rather than leaving them to
+  // discover it on their next reload. The console holds no sockets of its own,
+  // so this hops to the trading service.
+  await notifyBalance(
+    req.params.id,
+    Number(result.demoBalance),
+    Number(result.realBalance)
+  );
 
   res.json({
     ok: true,

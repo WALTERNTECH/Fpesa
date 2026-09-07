@@ -6,7 +6,7 @@
  * served from cache.
  */
 
-const VERSION = 'fpesa-v1';
+const VERSION = 'fpesa-v2';
 const SHELL = VERSION + '-shell';
 const ASSETS = VERSION + '-assets';
 
@@ -68,19 +68,32 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Build output is content-hashed, so a hit is always correct.
+  //
+  // The catch matters more than it looks: respondWith on a rejected promise
+  // produces a bare network error, which for the app bundle means a blank page
+  // stuck on the boot screen with nothing to explain it. On a mobile connection
+  // that is a routine occurrence, not an edge case. Falling through to a real
+  // Response lets the page render its own failure instead.
   if (url.pathname.startsWith('/assets/')) {
     event.respondWith(
-      caches.match(req).then(
-        (hit) =>
-          hit ??
-          fetch(req).then((res) => {
+      caches.match(req).then((hit) => {
+        if (hit) return hit;
+        return fetch(req)
+          .then((res) => {
             if (res.ok) {
               const copy = res.clone();
               caches.open(ASSETS).then((c) => c.put(req, copy)).catch(() => undefined);
             }
             return res;
           })
-      )
+          .catch(
+            () =>
+              new Response('/* offline */', {
+                status: 504,
+                headers: { 'Content-Type': 'text/plain' },
+              })
+          );
+      })
     );
     return;
   }

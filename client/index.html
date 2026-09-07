@@ -123,6 +123,20 @@
       /* The boot stages cycle in pure CSS. Doing this with an inline <script>
          would need a script-src hash in the CSP that has to be kept in sync
          with the markup by hand — not worth it for four labels. */
+      .boot-slow {
+        margin: 18px 0 0;
+        max-width: 30ch;
+        font-size: 12.5px;
+        line-height: 1.5;
+        text-align: center;
+        color: #8b93a7;
+        opacity: 0;
+        animation: boot-slow-in 0.4s ease 18s forwards;
+      }
+      @keyframes boot-slow-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
       .boot-status {
         position: relative;
         width: 260px;
@@ -213,11 +227,18 @@
       </div>
       <div class="boot-status">
         <span>Connecting to market feed</span>
-        <span>Loading XAU/USD quotes</span>
+        <span>Loading volatility indices</span>
         <span>Syncing live prices</span>
         <span>Preparing trading desk</span>
       </div>
       <div class="boot-rail" aria-hidden="true"><i></i></div>
+      <!-- Revealed by a CSS animation after 18 seconds. The app bundle may be
+           the thing that failed to load, so this cannot depend on any script
+           running: if it did, the one case it exists for is the one case it
+           would never appear in. -->
+      <p class="boot-slow">
+        This is taking longer than usual. Check your connection, then reload.
+      </p>
     </div>
 
     <script type="module" src="/src/main.tsx"></script>

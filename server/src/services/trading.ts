@@ -244,6 +244,20 @@ function legDirection(configured: 'BUY' | 'SELL' | 'AUTO'): 'BUY' | 'SELL' {
   return Math.random() < 0.5 ? 'BUY' : 'SELL';
 }
 
+/**
+ * The market with the lowest measured chance of a stop-out at this duration.
+ * Null while the feed is still gathering samples, in which case the caller
+ * falls back to whatever the trader already had selected.
+ */
+export function pickBestMarket(durationSec: number): string | null {
+  const rows = priceFeed
+    .scan(durationSec, (symbol) => multiplierFor(durationSec, symbol))
+    .filter((r) => r.stopOutOdds !== null);
+  if (!rows.length) return null;
+  rows.sort((a, z) => (a.stopOutOdds ?? 1) - (z.stopOutOdds ?? 1));
+  return rows[0]!.symbol;
+}
+
 /** What the tick monitor needs to decide whether a position must close now. */
 type LivePosition = {
   id: string;
@@ -514,7 +528,16 @@ class TradingEngine {
   }): Promise<{ run: PublicRun; trade: PublicTrade; balance: number }> {
     const { userId, mode, direction, stake, durationSec, count } = params;
 
-    const instrument = getInstrument(params.symbol ?? SYMBOL);
+    // 'AUTO' hands the choice of market to the scan: the instrument whose
+    // measured volatility currently gives this duration the lowest chance of
+    // being stopped out. Direction is still a coin flip per leg — the series is
+    // driftless, so where to stand can be chosen and which way to face cannot.
+    const requested =
+      params.symbol && params.symbol.toUpperCase() === 'AUTO'
+        ? pickBestMarket(durationSec) ?? SYMBOL
+        : params.symbol ?? SYMBOL;
+
+    const instrument = getInstrument(requested);
     if (!instrument || !priceFeed.has(instrument.symbol)) {
       throw new TradeError('UNKNOWN_MARKET', 'That market is not available for trading.');
     }

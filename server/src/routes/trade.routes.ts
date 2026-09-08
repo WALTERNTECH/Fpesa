@@ -34,7 +34,8 @@ const placeSchema = z.object({
     'Choose one of the offered trade durations.'
   ),
   accountMode: z.enum(['demo', 'real']).default('demo'),
-  // Omitted by older clients, which trade the default market.
+  // Omitted by older clients, which trade the default market. On a run this
+  // also accepts 'AUTO', which lets the scan choose the instrument.
   symbol: z.string().min(1).max(16).optional(),
 });
 

@@ -139,6 +139,26 @@ export type MarketSummary = Instrument & {
   dayOpen: number;
 };
 
+/** One market's current condition, as measured rather than assumed. */
+export type ScanMarket = {
+  symbol: string;
+  name: string;
+  volatility: number;
+  designSigma: number;
+  realisedSigma: number | null;
+  relative: number | null;
+  /** Chance this duration is stopped out before expiry. Null until warm. */
+  stopOutOdds: number | null;
+  samples: number;
+};
+
+export type ScanResult = {
+  durationSec: number;
+  markets: ScanMarket[];
+  best: string | null;
+  ts: number;
+};
+
 export type HistoryWindow = {
   trades: number;
   wins: number;

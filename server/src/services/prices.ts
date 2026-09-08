@@ -50,9 +50,14 @@ function roundTo(n: number, precision: number): number {
  * them five views of the same random numbers, which is both less useful and a
  * weaker fairness claim than it appears.
  */
+/** Ticks of log-returns kept for the realised-volatility measure (~60s). */
+const VOL_WINDOW = 240;
+
 class InstrumentFeed {
   price: number;
   dayOpen: number;
+  /** Rolling log-returns, newest last. */
+  private returns: number[] = [];
   private candles = new Map<Timeframe, Candle[]>();
   private engine: Engine | null = null;
   /** Live mode only. */
@@ -106,6 +111,16 @@ class InstrumentFeed {
 
   /** Advances one tick and returns the new price. */
   advance(): number {
+    const previous = this.price;
+    const next = this.step();
+    if (previous > 0 && next > 0) {
+      this.returns.push(Math.log(next / previous));
+      if (this.returns.length > VOL_WINDOW) this.returns.shift();
+    }
+    return next;
+  }
+
+  private step(): number {
     if (this.engine) {
       this.price = this.engine.next();
       return this.price;
@@ -181,6 +196,27 @@ class InstrumentFeed {
         if (bars.length > MAX_BARS) bars.shift();
       }
     }
+  }
+
+  /**
+   * Volatility actually observed over the last minute, as a fraction of price
+   * per sqrt(second) — the same units as the instrument's configured sigma, so
+   * the two are directly comparable.
+   *
+   * Returns null until there are enough samples to mean anything. A number
+   * computed from four ticks is noise wearing a decimal point.
+   */
+  realisedSigma(): number | null {
+    const n = this.returns.length;
+    if (n < 60) return null;
+    const mean = this.returns.reduce((s, r) => s + r, 0) / n;
+    const variance = this.returns.reduce((s, r) => s + (r - mean) * (r - mean), 0) / (n - 1);
+    const perTick = Math.sqrt(variance);
+    return perTick / Math.sqrt(TICK_MS / 1000);
+  }
+
+  samples(): number {
+    return this.returns.length;
   }
 
   history(tf: Timeframe): Candle[] {
@@ -389,6 +425,53 @@ class PriceFeed {
     }));
   }
 
+  /**
+   * What each market is doing right now, measured rather than assumed.
+   *
+   * For every instrument this reports the volatility observed over the last
+   * minute and, from it, the probability that a position of the given duration
+   * is stopped out before it expires. The barrier sits 1/multiplier away, and
+   * for a driftless walk the chance of touching a one-sided barrier within time
+   * T is 2(1 - phi(b / (sigma sqrt(T)))).
+   *
+   * That number is the whole point. Every instrument is *designed* to put the
+   * stop-out the same distance away, but realised volatility wanders around the
+   * design figure minute to minute, so at any given moment one market really is
+   * a safer place to put this ticket than another. Nothing here predicts
+   * direction, because nothing can: the series is driftless and each tick is an
+   * independent draw. It picks where to stand, not which way to face.
+   */
+  scan(durationSec: number, multiplierFor: (symbol: string) => number): Array<{
+    symbol: string;
+    name: string;
+    volatility: number;
+    designSigma: number;
+    realisedSigma: number | null;
+    relative: number | null;
+    stopOutOdds: number | null;
+    samples: number;
+  }> {
+    return [...this.feeds.values()].map((f) => {
+      const design = f.instrument.sigma;
+      const realised = f.realisedSigma();
+      const multiplier = multiplierFor(f.instrument.symbol);
+      const barrier = 1 / multiplier;
+      const sigma = realised ?? design;
+      const travel = sigma * Math.sqrt(durationSec);
+      const odds = travel > 0 ? 2 * (1 - normalCdf(barrier / travel)) : 0;
+      return {
+        symbol: f.instrument.symbol,
+        name: f.instrument.name,
+        volatility: f.instrument.volatility,
+        designSigma: design,
+        realisedSigma: realised,
+        relative: realised === null ? null : realised / design,
+        stopOutOdds: realised === null ? null : Math.max(0, Math.min(1, odds)),
+        samples: f.samples(),
+      };
+    });
+  }
+
   precisionFor(symbol: string): number {
     return instrumentOr(symbol).precision;
   }
@@ -401,6 +484,16 @@ class PriceFeed {
       mode: env.priceMode,
     };
   }
+}
+
+/** Abramowitz-Stegun 7.1.26. Accurate to ~7.5e-8, far past what is needed. */
+function normalCdf(z: number): number {
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989422804014327 * Math.exp((-z * z) / 2);
+  const prob =
+    d * t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 +
+      t * (-1.821255978 + t * 1.330274429))));
+  return z > 0 ? 1 - prob : prob;
 }
 
 export const priceFeed = new PriceFeed();

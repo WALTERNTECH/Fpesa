@@ -21,6 +21,7 @@ import type {
   Run,
   Instrument,
   MarketSummary,
+  ScanResult,
 } from '../lib/types';
 
 export type Toast = {
@@ -78,6 +79,9 @@ type AppValue = {
   autoRunCount: number;
   run: Run | null;
   autoBusy: boolean;
+  /** What the pre-trade scan measured, for the placing overlay. */
+  autoScan: ScanResult | null;
+  autoStage: 'scanning' | 'chosen' | 'placing';
   startAuto: () => Promise<void>;
   submitTrade: (direction: Direction) => Promise<void>;
 
@@ -158,6 +162,8 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
   const [desk, setDesk] = useState<DeskState>(DEFAULT_CONFIG.desk);
   const [run, setRun] = useState<Run | null>(null);
   const [autoBusy, setAutoBusy] = useState(false);
+  const [autoScan, setAutoScan] = useState<ScanResult | null>(null);
+  const [autoStage, setAutoStage] = useState<'scanning' | 'chosen' | 'placing'>('scanning');
   const [instruments, setInstruments] = useState<MarketSummary[]>([]);
   const [symbol, setSymbolState] = useState<string>(DEFAULT_CONFIG.symbol);
   const autoRunCount = 3;
@@ -589,19 +595,42 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
     if (!Number.isFinite(amount) || autoBusy) return;
 
     setAutoBusy(true);
+    setAutoScan(null);
+    setAutoStage('scanning');
     setTradeError(null);
     const startedAt = Date.now();
     try {
+      // Measure first. The server picks the market again for itself when the run
+      // is posted — it never takes the client's word for it — but showing what
+      // was measured is the difference between a real reading and a spinner
+      // that only looks like one.
+      try {
+        const scan = await api.get<ScanResult>('/market/scan?durationSec=' + duration);
+        setAutoScan(scan);
+        setAutoStage(scan.best ? 'chosen' : 'placing');
+        if (scan.best) await new Promise((r) => setTimeout(r, 550));
+      } catch {
+        // A failed scan must not stop the trade; the server falls back to the
+        // market already selected.
+      }
+      setAutoStage('placing');
+
       const res = await api.post<{ trade: Trade; balance: number; run: Run }>('/trades/run', {
         direction: 'AUTO',
         stake: amount,
         durationSec: duration,
         accountMode,
         count: autoRunCount,
-        symbol: symbolRef.current,
+        // 'AUTO' hands the choice of instrument to the server's own scan.
+        symbol: 'AUTO',
       });
       setRun(res.run);
       setOpenTrades((prev) => [...prev, res.trade]);
+      // The batch may have gone to a different market than the one on screen;
+      // follow it, or the trader watches a chart their money is not on.
+      if (res.run.symbol && res.run.symbol !== symbolRef.current) {
+        setSymbol(res.run.symbol);
+      }
       setUser((prev) => {
         if (!prev) return prev;
         return accountMode === 'demo'
@@ -697,6 +726,8 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       autoRunCount,
       run,
       autoBusy,
+      autoScan,
+      autoStage,
       startAuto,
       modal,
       openModal,
@@ -713,7 +744,8 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       ready, config, user, quote, price, tickDir, connected, online, accountMode,
       instruments, symbol, setSymbol, instrument, multiplier,
       balance, openTrades, stake, duration, tradeBusy, tradeError, stakeIssue,
-      canTrade, stakeCeiling, submitTrade, desk, autoRunCount, run, autoBusy, startAuto, modal, openModal, closeModal, login, register,
+      canTrade, stakeCeiling, submitTrade, desk, autoRunCount, run, autoBusy,
+      autoScan, autoStage, startAuto, modal, openModal, closeModal, login, register,
       logout, refreshUser, resetDemo, toasts, pushToast,
     ]
   );

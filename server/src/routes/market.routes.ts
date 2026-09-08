@@ -117,6 +117,42 @@ marketRouter.get('/analyse', (req, res) => {
   );
 });
 
+/**
+ * What every market is doing right now, ranked for a ticket of this duration.
+ *
+ * This is what Fpesa Auto runs before it opens anything. It measures, it does
+ * not forecast: realised volatility over the last minute, and from it the
+ * chance a position of this length is stopped out before expiry. The best
+ * market is the one where that chance is lowest at this moment.
+ */
+marketRouter.get('/scan', (req, res) => {
+  const durationSec = Number(req.query.durationSec ?? 10);
+  if (!(ALLOWED_DURATIONS as readonly number[]).includes(durationSec)) {
+    res.status(400).json({ error: 'VALIDATION', message: 'Choose an offered duration.' });
+    return;
+  }
+
+  const rows = priceFeed
+    .scan(durationSec, (symbol) => multiplierFor(durationSec, symbol))
+    .sort((a, z) => {
+      // Markets still gathering samples sort last rather than winning by
+      // default on a null.
+      if (a.stopOutOdds === null) return 1;
+      if (z.stopOutOdds === null) return -1;
+      return a.stopOutOdds - z.stopOutOdds;
+    });
+
+  const ready = rows.filter((r) => r.stopOutOdds !== null);
+  res.json({
+    durationSec,
+    markets: rows,
+    // Null while the feed is still warming up; the caller then trades whatever
+    // market the trader already had selected rather than guessing.
+    best: ready.length ? ready[0]!.symbol : null,
+    ts: Date.now(),
+  });
+});
+
 marketRouter.get('/news', async (_req, res) => {
   const items = await getNews();
   res.json({ items });

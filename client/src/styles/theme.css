@@ -1877,3 +1877,36 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   .ar-arc { animation-duration: 2.4s; }
   .auto-veil, .auto-card { animation: none; }
 }
+
+/* The measurement itself, inside the placing overlay. */
+.auto-scan { display: grid; gap: 6px; width: 100%; margin: 0; padding: 0; list-style: none; }
+.auto-scan li {
+  display: grid;
+  grid-template-columns: 52px 1fr 46px;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--subtle);
+}
+.as-sym { font-weight: 600; }
+.as-bar { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.as-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--line-strong);
+  transition: width 0.35s var(--ease);
+}
+.as-val { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* The market the batch is going to. */
+.auto-scan li.pick { color: var(--ink); font-weight: 700; }
+.auto-scan li.pick .as-bar i { background: var(--up); }
+
+.auto-foot {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
+  text-align: center;
+  min-height: 32px;
+}

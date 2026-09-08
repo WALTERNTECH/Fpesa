@@ -1783,3 +1783,97 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   .hd-rows { overflow-x: auto; }
   .hr { min-width: 470px; }
 }
+
+/* ========================================================================== */
+/*  Fpesa Auto — placing overlay                                              */
+/* ========================================================================== */
+
+.auto-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(10, 13, 20, 0.42);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  animation: veil-in 0.16s var(--ease);
+}
+@keyframes veil-in { from { opacity: 0; } to { opacity: 1; } }
+
+.auto-card {
+  width: 100%;
+  max-width: 296px;
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: 24px 20px 20px;
+  background: var(--white);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  animation: card-in 0.22s var(--ease);
+}
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+.auto-ring { position: relative; display: grid; place-items: center; }
+.auto-ring svg { transform: rotate(-90deg); }
+.ar-track { fill: none; stroke: var(--surface-2); stroke-width: 3; }
+.ar-arc {
+  fill: none;
+  stroke: var(--blue);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 34 92;
+  transform-origin: 24px 24px;
+  animation: ar-spin 0.9s linear infinite;
+}
+@keyframes ar-spin { to { transform: rotate(360deg); } }
+
+/* The instrument sits inside the ring, so the trader can see which market the
+   batch is going on without reading a line of text. */
+.ar-sym {
+  position: absolute;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.auto-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.auto-steps { display: grid; gap: 7px; width: 100%; margin: 0; padding: 0; list-style: none; }
+.auto-steps li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  color: var(--subtle);
+  transition: color 0.18s var(--ease);
+}
+.auto-steps .dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--line-strong);
+  transition: background 0.18s var(--ease), transform 0.18s var(--ease);
+}
+.auto-steps li.now { color: var(--ink); font-weight: 600; }
+.auto-steps li.now .dot { background: var(--blue); transform: scale(1.35); }
+.auto-steps li.done { color: var(--ink-2); }
+.auto-steps li.done .dot { background: var(--up); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ar-arc { animation-duration: 2.4s; }
+  .auto-veil, .auto-card { animation: none; }
+}

@@ -6,6 +6,7 @@ import { TradePanel } from './components/TradePanel';
 import { TradeBar } from './components/TradeBar';
 import { MarketPicker } from './components/MarketPicker';
 import { TradeHistory } from './components/TradeHistory';
+import { AutoRunSpinner } from './components/AutoRunSpinner';
 import { SupportButton } from './components/SupportButton';
 import { InstallPrompt } from './components/InstallPrompt';
 import { AuthModal } from './components/AuthModal';
@@ -32,6 +33,7 @@ export function App(): JSX.Element {
 
       <Footer />
       <TradeBar />
+      <AutoRunSpinner />
       <SupportButton />
       <InstallPrompt />
       <Toasts />

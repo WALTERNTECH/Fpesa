@@ -9,7 +9,7 @@ export function TradePanel(): JSX.Element {
     user, config, accountMode, setAccountMode, balance, openModal,
     stake, setStake, duration, setDuration,
     tradeBusy, tradeError, setTradeError, stakeIssue, canTrade, submitTrade, desk,
-    autoRunCount, run, startAuto, autoBusy, symbol, multiplier, stakeCeiling,
+    run, startAuto, autoBusy, symbol, multiplier, stakeCeiling,
   } = useApp();
 
   const stakeAmount = Number(stake);
@@ -170,12 +170,7 @@ export function TradePanel(): JSX.Element {
             disabled={autoBusy || tradeBusy !== null || deskClosed || (Boolean(user) && !canTrade)}
             onClick={() => void startAuto()}
           >
-            <span className="at-main">
-              {autoBusy ? 'Opening…' : 'Fpesa Auto'}
-            </span>
-            <span className="at-sub">
-              {autoRunCount} positions · {ksh(stakeAmount)} each · {ksh(stakeAmount * autoRunCount)} total · side picked at random
-            </span>
+            <span className="at-main">Fpesa Auto</span>
           </button>
 
           {run && run.status === 'RUNNING' && (

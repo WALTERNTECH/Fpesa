@@ -590,6 +590,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
 
     setAutoBusy(true);
     setTradeError(null);
+    const startedAt = Date.now();
     try {
       const res = await api.post<{ trade: Trade; balance: number; run: Run }>('/trades/run', {
         direction: 'AUTO',
@@ -610,6 +611,12 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
     } catch (err) {
       setTradeError(err instanceof ApiError ? err.message : 'Could not start the auto-trade.');
     } finally {
+      // A floor on how long the overlay is shown, not padding on how long the
+      // work takes: the position is already open behind it. Without this a fast
+      // response makes the whole thing appear and vanish inside a frame, which
+      // reads as a glitch rather than as confirmation.
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < 750) await new Promise((r) => setTimeout(r, 750 - elapsed));
       setAutoBusy(false);
     }
   }, [user, stake, duration, accountMode, autoBusy, autoRunCount]);

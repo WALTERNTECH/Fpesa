@@ -14,7 +14,7 @@ export function TradeBar(): JSX.Element {
   const {
     user, stake, duration, config, accountMode, balance,
     tradeBusy, canTrade, openModal, desk, setAccountMode,
-    autoRunCount, run, startAuto, autoBusy,
+    run, startAuto, autoBusy,
   } = useApp();
 
   if (!user) {
@@ -78,12 +78,14 @@ export function TradeBar(): JSX.Element {
         disabled={autoBusy || tradeBusy !== null || !canTrade}
         onClick={() => void startAuto()}
       >
-        <span className="ba-main">{autoBusy ? 'Opening…' : 'Fpesa Auto'}</span>
-        <span className="ba-sub">
+        {/* One label, nothing else. The batch size and cost are already on the
+            ticket chip beside it, and the run's progress has its own line under
+            the panel — repeating either here only crowded the tap target. */}
+        <span className="ba-main">
           {run && run.status === 'RUNNING'
             ? 'Position ' + Math.min(run.completedCount + 1, run.totalCount) +
               ' of ' + run.totalCount
-            : autoRunCount + ' positions · ' + ksh(Number(stake) * autoRunCount || 0, true)}
+            : 'Fpesa Auto'}
         </span>
       </button>
 

@@ -1,16 +1,21 @@
 {
   "name": "Fpesa",
   "short_name": "Fpesa",
-  "description": "Trade XAU/USD with M-Pesa deposits and withdrawals.",
+  "description": "Trade five volatility indices with M-Pesa deposits and withdrawals.",
   "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["standalone", "minimal-ui"],
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
   "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#0b4fd8",
-  "categories": ["finance"],
+  "categories": [
+    "finance"
+  ],
   "icons": [
     {
       "src": "/icon-192.png",

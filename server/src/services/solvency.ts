@@ -63,6 +63,20 @@ class SolvencyView {
   }
 
   /**
+   * Drops the cache so the next read hits the database.
+   *
+   * Called when the operator changes the float. Ten seconds of staleness is
+   * harmless in the direction that matters — the authoritative check runs
+   * inside the trade transaction — but after the float is *lowered* it leaves
+   * the panel advertising a ceiling the book no longer has, and a trader typing
+   * that number and being refused is the exact experience the ceiling exists
+   * to prevent.
+   */
+  invalidate(): void {
+    this.readAt = 0;
+  }
+
+  /**
    * The largest live stake the book could currently cover, given that a
    * position's worst case is stake x maxProfitMultiple.
    *

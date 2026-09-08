@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { env } from '../env.js';
 import { db, pgErrorCode } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
-import { notifyBalance } from './internal.routes.js';
+import { notifyBalance, notifyFloatChanged } from './internal.routes.js';
 import { exposureGuard } from '../services/exposure.js';
 import { solvency } from '../services/solvency.js';
 import { priceFeed, SYMBOL } from '../services/prices.js';
@@ -407,8 +407,10 @@ adminRouter.post('/float', async (req, res) => {
     ' (was ' + (result.previous ?? 'unset') + '): ' + reason
   );
 
-  // The cached view is what the trade panel's ceiling is drawn from; a stale
-  // read here would show the old ceiling for up to ten seconds after a top-up.
+  // The cached view is what the trade panel's ceiling is drawn from, and the
+  // trading service keeps its own. Clear both, or a float that was just lowered
+  // leaves traders being offered a stake the book can no longer cover.
+  await notifyFloatChanged();
   const book = await solvency.read(0);
   res.json({
     ok: true,

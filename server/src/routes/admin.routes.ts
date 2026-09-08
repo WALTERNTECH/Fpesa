@@ -315,6 +315,110 @@ async function liveExposure(price: number): Promise<{
   };
 }
 
+/**
+ * The operator float: how much of your own capital stands behind the book.
+ *
+ * Setting it moves no money. It is a statement about what is in the payout
+ * wallet, and the solvency guard trusts it completely — so a figure larger than
+ * the wallet really holds authorises winnings that cannot be paid. That is why
+ * it is audited like a balance adjustment and why the reason is mandatory.
+ */
+adminRouter.get('/float', async (_req, res) => {
+  const [book, setting, history] = await Promise.all([
+    solvency.read(0),
+    db.from('platform_settings').select('value, reason, updated_at, updated_by')
+      .eq('key', 'operator_float').maybeSingle(),
+    db.from('platform_settings_log')
+      .select('id, old_value, new_value, reason, created_at, admin_id')
+      .eq('key', 'operator_float').order('created_at', { ascending: false }).limit(20),
+  ]);
+
+  const rows = (history.data ?? []) as Array<Record<string, unknown>>;
+  const ids = [...new Set(rows.map((r) => String(r.admin_id)))];
+  const { data: people } = ids.length
+    ? await db.from('users').select('id, username').in('id', ids)
+    : { data: [] as Array<{ id: string; username: string }> };
+  const nameOf = new Map(
+    ((people ?? []) as Array<{ id: string; username: string }>).map((p) => [p.id, p.username])
+  );
+
+  const s = setting.data as Record<string, unknown> | null;
+  res.json({
+    float: book.operatorFloat,
+    book,
+    maxLiveStake: solvency.maxLiveStake(book.headroom),
+    positionShare: env.maxPositionShare,
+    maxProfitMultiple: env.maxProfitMultiple,
+    /** True once it has been set here rather than inherited from the deploy. */
+    managed: Boolean(s),
+    reason: s ? s.reason : null,
+    updatedAt: s ? s.updated_at : null,
+    history: rows.map((r) => ({
+      id: r.id,
+      from: r.old_value === null ? null : Number(r.old_value),
+      to: Number(r.new_value),
+      reason: r.reason,
+      admin: nameOf.get(String(r.admin_id)) ?? '—',
+      createdAt: r.created_at,
+    })),
+  });
+});
+
+adminRouter.post('/float', async (req, res) => {
+  const body = req.body as { amount?: unknown; reason?: unknown };
+  const amount = Number(body.amount);
+  const reason = String(body.reason ?? '').trim();
+
+  if (!Number.isFinite(amount) || amount < 0) {
+    res.status(400).json({
+      error: 'INVALID_VALUE',
+      message: 'Enter the amount in the payout wallet. It cannot be negative.',
+    });
+    return;
+  }
+  if (reason.length < 3) {
+    res.status(400).json({
+      error: 'REASON_REQUIRED',
+      message: 'Give a reason — it is stored against the change.',
+    });
+    return;
+  }
+
+  const { data, error } = await db.rpc('fpesa_set_operator_float', {
+    p_admin: req.user!.id,
+    p_value: Math.round(amount * 100) / 100,
+    p_reason: reason,
+  });
+
+  if (error) {
+    const code = pgErrorCode(error.message);
+    if (code === 'INVALID_VALUE' || code === 'REASON_REQUIRED') {
+      res.status(400).json({ error: code, message: 'Check the amount and the reason.' });
+      return;
+    }
+    console.error('[admin] float update failed:', error.message);
+    res.status(500).json({ error: 'FLOAT_FAILED', message: 'Could not save the float.' });
+    return;
+  }
+
+  const result = data as { previous: number | null; value: number };
+  console.log(
+    '[admin] ' + req.user!.username + ' set the operator float to ' + result.value +
+    ' (was ' + (result.previous ?? 'unset') + '): ' + reason
+  );
+
+  // The cached view is what the trade panel's ceiling is drawn from; a stale
+  // read here would show the old ceiling for up to ten seconds after a top-up.
+  const book = await solvency.read(0);
+  res.json({
+    ok: true,
+    previous: result.previous,
+    float: result.value,
+    book,
+    maxLiveStake: solvency.maxLiveStake(book.headroom),
+  });
+});
+
 // ------------------------------------------------------------ user accounts
 
 /**

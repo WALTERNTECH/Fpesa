@@ -184,6 +184,12 @@ export const env = {
    *
    * Set it to the amount actually sitting in the payout account.
    */
+  /**
+   * Fallback only. The live figure is set in the operations console and stored
+   * in the database, because it changes whenever the payout wallet is topped up
+   * and a redeploy for that would guarantee it goes stale. This value is used
+   * only until the console sets one.
+   */
   operatorFloat: num('OPERATOR_FLOAT', 0),
   /**
    * The largest share of the book's headroom a single position may consume.

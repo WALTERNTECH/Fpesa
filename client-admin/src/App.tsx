@@ -183,6 +183,8 @@ function Dashboard({ onOut }: { onOut: () => void }): JSX.Element {
         {tab === 'book' && error && <div className="err">{error}</div>}
         {tab === 'book' && !d && !error && <div className="muted">Loading…</div>}
 
+        {tab === 'book' && <FloatEditor />}
+
         {tab === 'book' && d && (
           <>
             {d.upstream && !d.upstream.ok && (
@@ -359,6 +361,169 @@ function Dashboard({ onOut }: { onOut: () => void }): JSX.Element {
   );
 }
 
+
+
+/* ----------------------------------------------------------- operator float */
+type FloatView = {
+  float: number;
+  book: { cash: number; operatorFloat: number; owed: number; atRisk: number; headroom: number };
+  maxLiveStake: number;
+  positionShare: number;
+  maxProfitMultiple: number;
+  managed: boolean;
+  reason: string | null;
+  updatedAt: string | null;
+  history: Array<{
+    id: string; from: number | null; to: number;
+    reason: string; admin: string; createdAt: string;
+  }>;
+};
+
+/**
+ * The float: how much of the operator's own money stands behind the book.
+ *
+ * Saving here moves nothing. It is a statement about what is in the payout
+ * wallet, and the solvency guard believes it without checking — so a number
+ * larger than the wallet really holds authorises winnings that cannot be paid.
+ * That is the whole reason it is audited and the reason is required.
+ */
+function FloatEditor(): JSX.Element {
+  const [d, setD] = useState<FloatView | null>(null);
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const next = await call<FloatView>('/admin/float');
+      setD(next);
+      setAmount(String(next.float));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load the float.');
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const value = Number(amount);
+  const valid = Number.isFinite(value) && value >= 0 && reason.trim().length >= 3 &&
+    (!d || value !== d.float);
+
+  const save = async (): Promise<void> => {
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      const res = await call<{ previous: number | null; float: number; maxLiveStake: number }>(
+        '/admin/float', { amount: value, reason: reason.trim() }
+      );
+      setNotice(
+        'Float ' + (res.previous === null ? 'set to ' : ksh(res.previous) + ' to ') +
+        ksh(res.float) + ' — largest live trade is now ' + ksh(res.maxLiveStake)
+      );
+      setReason('');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save the float.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!d) return <section><h2>Float</h2><p className="muted">Loading…</p></section>;
+
+  // What the trader can stake follows from the float, so show the arithmetic
+  // rather than leaving the operator to discover the ceiling by testing it.
+  const projected = Number.isFinite(value) && value >= 0
+    ? Math.floor(
+        Math.max(0, d.book.cash + value - d.book.owed - d.book.atRisk) *
+        d.positionShare / d.maxProfitMultiple
+      )
+    : null;
+
+  return (
+    <section>
+      <h2>Money behind the book</h2>
+
+      {d.float === 0 && (
+        <div className="warn">
+          The float is zero, so headroom is zero and <b>no live position can open</b>.
+          Fund the payout wallet, then enter that amount here.
+        </div>
+      )}
+      {error && <div className="err">{error}</div>}
+      {notice && <div className="ok">{notice}</div>}
+
+      <div className="grid">
+        <Stat k="Your float" v={ksh(d.float)} tone={d.float > 0 ? 'up' : 'down'} />
+        <Stat k="Cash held" v={ksh(d.book.cash)} />
+        <Stat k="Owed to traders" v={ksh(d.book.owed)} />
+        <Stat k="Risk on open trades" v={ksh(d.book.atRisk)} />
+        <Stat k="Headroom" v={ksh(d.book.headroom)} tone={d.book.headroom > 0 ? 'up' : 'down'} />
+        <Stat k="Largest live trade" v={ksh(d.maxLiveStake)} />
+      </div>
+
+      <div className="adjust">
+        <div className="row">
+          <label>
+            Amount in the payout wallet
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => { setAmount(e.target.value); setNotice(null); }}
+            />
+          </label>
+          <label>
+            Reason
+            <input
+              value={reason}
+              onChange={(e) => { setReason(e.target.value); setNotice(null); }}
+              placeholder="e.g. topped the IntaSend wallet up to 120,000"
+            />
+          </label>
+        </div>
+
+        {projected !== null && d && value !== d.float && (
+          <p className="preview">
+            Headroom becomes {ksh(d.book.cash + value - d.book.owed - d.book.atRisk)} and the
+            largest live trade becomes <b>{ksh(projected)}</b>.
+          </p>
+        )}
+
+        <button className="btn" disabled={!valid || busy} onClick={() => void save()}>
+          {busy ? 'Saving…' : 'Save float'}
+        </button>
+
+        <p className="note nomargin">
+          This does not move money. It records what is actually in the payout wallet, and the
+          guard trusts it: set it higher than the wallet really holds and the platform will
+          approve winnings it cannot pay. Lower it whenever you take money out.
+        </p>
+      </div>
+
+      {d.history.length > 0 && (
+        <div className="tw" style={{ marginTop: 14 }}>
+          <table>
+            <thead>
+              <tr><th>When</th><th>From</th><th>To</th><th>By</th><th>Reason</th></tr>
+            </thead>
+            <tbody>
+              {d.history.map((h) => (
+                <tr key={h.id}>
+                  <td>{ago(h.createdAt)} ago</td>
+                  <td>{h.from === null ? '—' : ksh(h.from)}</td>
+                  <td>{ksh(h.to)}</td>
+                  <td>{h.admin}</td>
+                  <td>{h.reason}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
 
 /* -------------------------------------------------------------- accounts */
 type Account = {

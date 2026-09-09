@@ -1,5 +1,6 @@
 import { db } from '../lib/db.js';
 import { env } from '../env.js';
+import { PROVIDER, walletBalance } from './payments.js';
 
 export type BookFloat = {
   cash: number;
@@ -24,6 +25,7 @@ class SolvencyView {
   private cached: BookFloat = EMPTY;
   private readAt = 0;
   private inflight: Promise<BookFloat> | null = null;
+  private floatTimer: NodeJS.Timeout | null = null;
 
   /** Fresh enough for a ceiling shown in the UI; never used to permit a trade. */
   async read(maxAgeMs = 10_000): Promise<BookFloat> {
@@ -55,6 +57,44 @@ class SolvencyView {
     })();
 
     return this.inflight;
+  }
+
+  /**
+   * Keeps the operator float in step with the payout wallet.
+   *
+   * The float is supposed to describe money that can actually be paid out. Set
+   * by hand it is correct only until someone moves funds, and a float above the
+   * real balance authorises winnings that cannot be paid — the exact failure the
+   * guard exists to prevent. Palpluss reports its B2C balance, so this reads it
+   * rather than trusting anyone to remember.
+   *
+   * A failed read changes nothing: the last synced figure stands, which is
+   * conservative in the direction that matters, because a wallet that has been
+   * topped up simply keeps the smaller ceiling until the next poll succeeds.
+   */
+  startFloatSync(everyMs = 60_000): void {
+    if (this.floatTimer || PROVIDER !== 'palpluss') return;
+    const sync = async (): Promise<void> => {
+      try {
+        const balance = await walletBalance();
+        if (balance === null) return;
+        const { error } = await db.rpc('fpesa_sync_operator_float', { p_value: balance });
+        if (error) {
+          console.error('[solvency] float sync rejected:', error.message);
+          return;
+        }
+        this.readAt = 0;
+      } catch (err) {
+        console.error('[solvency] could not read the payout wallet:', err);
+      }
+    };
+    void sync();
+    this.floatTimer = setInterval(() => void sync(), everyMs);
+  }
+
+  stopFloatSync(): void {
+    if (this.floatTimer) clearInterval(this.floatTimer);
+    this.floatTimer = null;
   }
 
   /** Last figure read, without touching the database. */

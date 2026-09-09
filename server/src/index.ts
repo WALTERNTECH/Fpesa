@@ -12,6 +12,7 @@ import { priceFeed } from './services/prices.js';
 import { tradingEngine } from './services/trading.js';
 import { primeNews } from './services/news.js';
 import { startReconciliation } from './services/wallet.js';
+import { solvency } from './services/solvency.js';
 import { exposureGuard } from './services/exposure.js';
 import { authRouter } from './routes/auth.routes.js';
 import { marketRouter } from './routes/market.routes.js';
@@ -143,6 +144,9 @@ async function main(): Promise<void> {
     primeNews();
     startReconciliation();
     exposureGuard.start();
+    // Reads the payout wallet and keeps the float honest without anyone
+    // having to remember to update it.
+    solvency.startFloatSync();
   }
 
   server.listen(env.port, () => {

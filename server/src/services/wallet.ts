@@ -95,7 +95,12 @@ export async function startDeposit(user: {
   id: string;
   phone: string;
   username: string;
-}, amount: number): Promise<PublicTx> {
+}, amount: number, payFrom?: string): Promise<PublicTx> {
+  // The prompt can go to any M-Pesa number — someone paying from a second line
+  // or a family member's phone is ordinary. The number used is recorded on the
+  // transaction, so the statement shows where the money actually came from
+  // rather than where it was assumed to come from.
+  const phone = payFrom || user.phone;
   const value = Math.round(amount);
   if (!Number.isFinite(value) || value < env.minDeposit) {
     throw new WalletError(
@@ -123,7 +128,7 @@ export async function startDeposit(user: {
       user_id: user.id,
       kind: 'DEPOSIT',
       amount: value,
-      phone: user.phone,
+      phone,
       reference: ref,
       status: 'PENDING',
     })
@@ -138,7 +143,7 @@ export async function startDeposit(user: {
 
   try {
     const provider = await initiateStkPush({
-      phone: user.phone,
+      phone,
       amount: value,
       reference: ref,
       callbackUrl: callbackUrl(),
@@ -169,7 +174,18 @@ export async function startWithdrawal(user: {
   id: string;
   phone: string;
   username: string;
-}, amount: number): Promise<PublicTx> {
+}, amount: number, payTo?: string): Promise<PublicTx> {
+  /**
+   * Payouts may be sent to a number other than the registered one.
+   *
+   * Worth being clear-eyed about: this is the control that normally stops a
+   * stolen session draining an account to a stranger's phone, and sending
+   * elsewhere is also the classic laundering route. It is allowed because the
+   * operator asked for it, and every payout records the destination, so an
+   * account paying out to a number that is not its own is at least visible
+   * afterwards rather than invisible.
+   */
+  const phone = payTo || user.phone;
   const value = Math.round(amount);
   if (!Number.isFinite(value) || value < env.minWithdrawal) {
     throw new WalletError(
@@ -192,7 +208,7 @@ export async function startWithdrawal(user: {
   const { data, error } = await db.rpc('fpesa_reserve_withdrawal', {
     p_user: user.id,
     p_amount: value,
-    p_phone: user.phone,
+    p_phone: phone,
     p_reference: ref,
   });
 
@@ -225,8 +241,14 @@ export async function startWithdrawal(user: {
   const row = reserved.transaction;
 
   try {
+    if (phone !== user.phone) {
+      console.log(
+        '[wallet] payout for ' + user.username + ' going to ' + phone +
+        ', not the registered ' + user.phone
+      );
+    }
     const provider = await initiateB2CPayout({
-      phone: user.phone,
+      phone,
       amount: value,
       reference: ref,
       description: 'Fpesa withdrawal',

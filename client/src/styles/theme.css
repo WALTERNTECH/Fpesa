@@ -1921,3 +1921,19 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   color: var(--muted);
 }
 .fx-line b { font-size: 13.5px; color: var(--ink); font-weight: 700; }
+
+/* Withdraw sits beside Deposit in the header. Quieter than deposit — money
+   leaving should never be the most eye-catching thing on the screen. */
+.btn-withdraw {
+  gap: 5px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-weight: 600;
+}
+.btn-withdraw:hover { background: var(--surface-sunk); }
+
+@media (max-width: 520px) {
+  .btn-withdraw span { display: none; }
+  .btn-withdraw { padding: 0 9px; }
+}

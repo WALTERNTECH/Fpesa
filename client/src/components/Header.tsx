@@ -106,6 +106,13 @@ export function Header(): JSX.Element {
                 <IconArrowDown size={15} />
                 <span>Deposit</span>
               </button>
+              <button
+                className="btn btn-withdraw btn-sm"
+                onClick={() => openModal('withdraw')}
+              >
+                <IconArrowUp size={15} />
+                <span>Withdraw</span>
+              </button>
 
               <div className="pos-rel" ref={menuRef}>
               <button

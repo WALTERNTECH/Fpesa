@@ -23,6 +23,9 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
   const isDeposit = kind === 'deposit';
 
   const [amount, setAmount] = useState('');
+  // Defaults to the registered number, because that is what most people want,
+  // but the prompt or the payout can go anywhere valid.
+  const [phone, setPhone] = useState(user?.phone ?? '');
   const [stage, setStage] = useState<Stage>('form');
   const [error, setError] = useState<string | null>(null);
   const [txn, setTxn] = useState<Transaction | null>(null);
@@ -111,7 +114,7 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
     try {
       const res = await api.post<{ transaction: Transaction }>(
         isDeposit ? '/wallet/deposit' : '/wallet/withdraw',
-        { amount: value, ...(inUsd ? { currency: 'USD' } : {}) }
+        { amount: value, phone, ...(inUsd ? { currency: 'USD' } : {}) }
       );
       setTxn(res.transaction);
       startPolling(res.transaction.id);
@@ -129,7 +132,9 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
     <Modal
       title={title}
       subtitle={
-        user ? 'To ' + displayPhone(user.phone) + ' — your registered number.' : undefined
+        isDeposit
+          ? 'The M-Pesa prompt goes to the number you choose below.'
+          : 'Paid straight to the M-Pesa number you choose below.'
       }
       onClose={() => {
         stopPolling();
@@ -207,6 +212,34 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
             ) : (
               <div className="field-error" style={{ color: 'var(--subtle)' }}>
                 Minimum {ksh(minimum, true)}.
+              </div>
+            )}
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="wallet-phone">
+              {isDeposit ? 'M-Pesa number to charge' : 'M-Pesa number to pay'}
+            </label>
+            <div className="input-prefix">
+              <span className="pfx">+254</span>
+              <input
+                id="wallet-phone"
+                className="input"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                value={phone}
+                onChange={(e) => {
+                  setPhone(e.target.value.replace(/[^0-9+]/g, ''));
+                  setError(null);
+                }}
+                placeholder="0712345678"
+                required
+              />
+            </div>
+            {user && phone.replace(/D/g, '') !== user.phone.replace(/D/g, '') && (
+              <div className="field-error" style={{ color: 'var(--muted)' }}>
+                Not your registered number ({displayPhone(user.phone)}).
               </div>
             )}
           </div>

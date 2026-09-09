@@ -2,7 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { db } from '../lib/db.js';
-import { requireAuth } from '../lib/auth.js';
+import { normalisePhone, requireAuth } from '../lib/auth.js';
 import { env } from '../env.js';
 import { exposureGuard } from '../services/exposure.js';
 import { toKes, usdKes } from '../services/fx.js';
@@ -38,6 +38,16 @@ walletRouter.post('/deposit', requireAuth, moveLimiter, async (req, res) => {
   }
   const currency = (req.body as { currency?: string }).currency === 'USD' ? 'USD' : 'KES';
 
+  const rawPhone = (req.body as { phone?: string }).phone;
+  const payFrom = rawPhone ? normalisePhone(String(rawPhone)) : req.user!.phone;
+  if (!payFrom) {
+    res.status(400).json({
+      error: 'INVALID_PHONE',
+      message: 'Enter a valid Safaricom number, like 0712345678.',
+    });
+    return;
+  }
+
   // The rate is read here rather than accepted from the browser. What the
   // client showed was a quote; this is what the customer is actually charged,
   // and the two are allowed to differ by whatever the market did in between.
@@ -58,7 +68,7 @@ walletRouter.post('/deposit', requireAuth, moveLimiter, async (req, res) => {
   }
 
   try {
-    const tx = await startDeposit(req.user!, amountKes);
+    const tx = await startDeposit(req.user!, amountKes, payFrom);
     res.status(202).json({
       transaction: tx,
       quoted,
@@ -82,11 +92,21 @@ walletRouter.post('/withdraw', requireAuth, moveLimiter, async (req, res) => {
     res.status(400).json({ error: 'VALIDATION', message: 'Enter a valid amount.' });
     return;
   }
+  const rawPhone = (req.body as { phone?: string }).phone;
+  const payTo = rawPhone ? normalisePhone(String(rawPhone)) : req.user!.phone;
+  if (!payTo) {
+    res.status(400).json({
+      error: 'INVALID_PHONE',
+      message: 'Enter a valid Safaricom number, like 0712345678.',
+    });
+    return;
+  }
+
   try {
-    const tx = await startWithdrawal(req.user!, parsed.data.amount);
+    const tx = await startWithdrawal(req.user!, parsed.data.amount, payTo);
     res.status(202).json({
       transaction: tx,
-      message: 'Your withdrawal is on its way to ' + req.user!.phone + '.',
+      message: 'Your withdrawal is on its way to ' + payTo + '.',
     });
   } catch (err) {
     if (err instanceof WalletError) {

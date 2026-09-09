@@ -154,7 +154,10 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
   const [tickDir, setTickDir] = useState<'up' | 'down' | null>(null);
   const [connected, setConnected] = useState(false);
   const [online, setOnline] = useState(0);
-  const [accountMode, setAccountMode] = useState<AccountMode>('demo');
+  // The live account is the product; demo is the practice mode you switch into.
+  // Landing on demo made the first thing a funded trader saw a balance that was
+  // not theirs.
+  const [accountMode, setAccountMode] = useState<AccountMode>('real');
   const [openTrades, setOpenTrades] = useState<Trade[]>([]);
   const [modal, setModal] = useState<ModalKind>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -232,8 +235,6 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       if (mk.status === 'fulfilled') setInstruments(mk.value.instruments);
       if (me.status === 'fulfilled' && me.value.user) {
         setUser(me.value.user);
-        // A returning trader with real funds lands on their live account.
-        if (me.value.user.realBalance > 0) setAccountMode('real');
       }
       if (q.status === 'fulfilled') {
         setQuote(q.value);
@@ -452,7 +453,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
     async (username: string, password: string) => {
       const res = await api.post<{ user: User }>('/auth/login', { username, password });
       setUser(res.user);
-      setAccountMode(res.user.realBalance > 0 ? 'real' : 'demo');
+      setAccountMode('real');
       setModal(null);
       pushToast({ tone: 'info', icon: '✓', title: 'Welcome back, ' + res.user.username });
       marketSocket.resume();
@@ -469,6 +470,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
     }) => {
       const res = await api.post<{ user: User; demoCredited: number }>('/auth/register', input);
       setUser(res.user);
+      // A brand-new account has nothing live to trade, so start them in demo.
       setAccountMode('demo');
       setModal(null);
       pushToast({

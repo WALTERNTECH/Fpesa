@@ -39,7 +39,28 @@ export const env = {
   supabaseServiceKey: str('SUPABASE_SERVICE_ROLE_KEY'),
 
   jwtSecret: str('JWT_SECRET'),
-  webhookToken: str('INTASEND_WEBHOOK_TOKEN') || str('PALPLUSS_WEBHOOK_TOKEN'),
+  /** Secret path segment on the callback URL, shared with whichever provider. */
+  webhookToken: str('PALPLUSS_WEBHOOK_TOKEN') || str('INTASEND_WEBHOOK_TOKEN'),
+
+  /**
+   * Which M-Pesa provider is live. Both adapters normalise to one shape, so
+   * this is the only thing that has to change to switch.
+   */
+  paymentsProvider: str('PAYMENTS_PROVIDER', 'palpluss') as 'palpluss' | 'intasend',
+
+  palpluss: {
+    apiKey: str('PALPLUSS_API_KEY'),
+    baseUrl: str('PALPLUSS_BASE_URL', 'https://api.palpluss.com').replace(/\/+$/, ''),
+    /**
+     * Their endpoint pages document /v1/... while their machine-readable index
+     * lists /api/... . These are overridable so a wrong guess is a setting to
+     * change rather than a deploy to wait for.
+     */
+    stkPath: str('PALPLUSS_STK_PATH', '/v1/payments/stk'),
+    b2cPath: str('PALPLUSS_B2C_PATH', '/v1/b2c/payouts'),
+    txnPath: str('PALPLUSS_TXN_PATH', '/v1/transactions/{id}'),
+    balancePath: str('PALPLUSS_BALANCE_PATH', '/v1/wallets/balance'),
+  },
 
   intasend: {
     secretKey: str('INTASEND_SECRET_KEY'),
@@ -237,13 +258,25 @@ export function assertEnv(): void {
       'deposits without taking payment. Unset it, or run with NODE_ENV=development.'
     );
   }
-  if (!env.paymentsMock && !env.intasend.secretKey) {
+  const providerKey =
+    env.paymentsProvider === 'intasend' ? env.intasend.secretKey : env.palpluss.apiKey;
+  const providerVar =
+    env.paymentsProvider === 'intasend' ? 'INTASEND_SECRET_KEY' : 'PALPLUSS_API_KEY';
+
+  if (!env.paymentsMock && !providerKey) {
     console.warn(
-      '[fpesa] INTASEND_SECRET_KEY is not set — deposits and withdrawals will be ' +
+      '[fpesa] ' + providerVar + ' is not set — deposits and withdrawals will be ' +
       'rejected. Set PAYMENTS_MOCK=true to exercise the flow without live keys.'
     );
   }
-  if (!env.paymentsMock && env.intasend.secretKey && !env.intasend.webhookChallenge) {
+  if (!env.paymentsMock && providerKey && !env.webhookToken) {
+    console.warn(
+      '[fpesa] no webhook token is set, so the callback URL has no secret in it. ' +
+      'Set PALPLUSS_WEBHOOK_TOKEN before taking live payments.'
+    );
+  }
+  if (env.paymentsProvider === 'intasend' &&
+      !env.paymentsMock && env.intasend.secretKey && !env.intasend.webhookChallenge) {
     console.warn(
       '[fpesa] INTASEND_WEBHOOK_CHALLENGE is not set — provider callbacks cannot ' +
       'be authenticated, so they will be ignored and settlement will fall back ' +

@@ -4,6 +4,7 @@ import { db, pgErrorCode } from '../lib/db.js';
 import { hub } from '../realtime/hub.js';
 import { maskUsername } from './trading.js';
 import {
+  PROVIDER,
   PaymentError,
   getStatus,
   initiateB2CPayout,
@@ -11,7 +12,7 @@ import {
   setMockSettlementHandler,
   type ProviderStatus,
   type TxKind,
-} from './intasend.js';
+} from './payments.js';
 
 export type TxRow = {
   id: string;
@@ -62,8 +63,16 @@ export class WalletError extends Error {
   }
 }
 
+/**
+ * Eleven characters, deliberately.
+ *
+ * M-Pesa caps the account reference at twelve, and an over-long value is
+ * rejected by Safaricom rather than by the provider — which surfaces as a
+ * mysterious failed payment instead of a validation error. The old
+ * "FP-D-XXXXXXXXXXXX" form was seventeen.
+ */
 function reference(kind: 'D' | 'W'): string {
-  return 'FP-' + kind + '-' + randomBytes(6).toString('hex').toUpperCase();
+  return kind + randomBytes(5).toString('hex').toUpperCase();
 }
 
 function callbackUrl(): string {
@@ -74,7 +83,7 @@ function callbackUrl(): string {
       503
     );
   }
-  return env.publicUrl + '/api/webhooks/intasend/' + env.webhookToken;
+  return env.publicUrl + '/api/webhooks/' + PROVIDER + '/' + env.webhookToken;
 }
 
 /** Both are configurable; 0 removes our own ceiling. See env.ts. */
@@ -102,8 +111,10 @@ export async function startDeposit(user: {
   }
 
   const ref = reference('D');
-  // Verify the callback route is configured before charging anyone, even
-  // though IntaSend collections carry no per-request callback URL.
+  // Fail before charging anyone if the callback address is not configured.
+  // Palpluss requires it on every STK request; IntaSend reads its own from
+  // their dashboard, but a deposit either way is worthless without a route
+  // back for the result.
   callbackUrl();
 
   const { data, error } = await db
@@ -130,6 +141,7 @@ export async function startDeposit(user: {
       phone: user.phone,
       amount: value,
       reference: ref,
+      callbackUrl: callbackUrl(),
     });
     await db
       .from('transactions')

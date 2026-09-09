@@ -15,24 +15,16 @@ import { env } from '../env.js';
  * rest of the server never has to care which side a transaction came from.
  */
 
-export type ProviderStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED' | 'EXPIRED';
-export type TxKind = 'DEPOSIT' | 'WITHDRAWAL';
+import {
+  PaymentError,
+  type ProviderStatus,
+  type ProviderTxn,
+  type TxKind,
+  type WebhookHint,
+} from './payment-types.js';
 
-export type ProviderTxn = {
-  providerId: string;
-  status: ProviderStatus;
-  amount: number;
-  reference: string;
-  receipt: string | null;
-  resultCode: string | null;
-  resultDesc: string | null;
-};
-
-export class PaymentError extends Error {
-  constructor(public code: string, message: string, public status = 502) {
-    super(message);
-  }
-}
+export { PaymentError };
+export type { ProviderStatus, ProviderTxn, TxKind, WebhookHint };
 
 /** Collection invoice states. PARTIAL and RETRY stay pending — never credit. */
 function mapInvoiceState(state: string): ProviderStatus {
@@ -154,6 +146,8 @@ export async function initiateStkPush(params: {
   phone: string;
   amount: number;
   reference: string;
+  /** Ignored: IntaSend's collection webhook is configured in their dashboard. */
+  callbackUrl?: string;
 }): Promise<ProviderTxn> {
   if (env.paymentsMock) return mockTxn('DEPOSIT', params.reference, params.amount);
 
@@ -288,16 +282,6 @@ export function getStatus(kind: TxKind, providerId: string): Promise<ProviderTxn
 }
 
 // ---------------------------------------------------------------- webhooks
-export type WebhookHint = {
-  kind: TxKind;
-  reference: string;
-  providerId: string;
-  status: ProviderStatus;
-  receipt: string | null;
-  resultCode: string | null;
-  resultDesc: string | null;
-};
-
 /**
  * Reads either webhook shape into one hint. Collections arrive with an
  * invoice_id and api_ref; payouts arrive with a tracking_id, a batch_reference

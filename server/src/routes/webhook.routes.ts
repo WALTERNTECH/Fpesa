@@ -1,21 +1,31 @@
 import { Router } from 'express';
 import { env } from '../env.js';
-import { challengeMatches, parseWebhook } from '../services/intasend.js';
+import { PROVIDER, challengeMatches, parseWebhook } from '../services/payments.js';
 import { handleProviderCallback } from '../services/wallet.js';
 
 export const webhookRouter = Router();
 
 /**
- * IntaSend callback for both collections and payouts.
+ * Provider callback for both collections and payouts.
  *
- * Three independent gates, because a payment webhook is an unauthenticated
- * public endpoint and this one moves money:
- *   1. a secret token in the URL path, given only to IntaSend
- *   2. the challenge string IntaSend echoes in every delivery
- *   3. the body is still only a hint — handleProviderCallback re-reads the
- *      transaction from IntaSend before any balance changes
+ * A payment webhook is an unauthenticated public endpoint that moves money, so
+ * it is gated three ways:
+ *   1. a secret token in the URL path, given only to the provider
+ *   2. a body-level check where the provider offers one — IntaSend echoes a
+ *      challenge string; Palpluss signs nothing at all, so on Palpluss this
+ *      gate does not exist and the other two carry the weight
+ *   3. the body is only ever a hint — handleProviderCallback re-reads the
+ *      transaction from the provider's API before any balance changes, and
+ *      refuses to credit a claimed success it cannot confirm
+ *
+ * Gate 3 is the one that actually matters. Anyone who learns this URL can post
+ * a convincing "payment succeeded" body; nobody can make the provider's own API
+ * agree with it.
+ *
+ * Both paths are mounted so a provider switch does not strand callbacks that
+ * are already registered on the old address.
  */
-webhookRouter.post('/intasend/:token', async (req, res) => {
+async function handleCallback(req: import('express').Request, res: import('express').Response): Promise<void> {
   if (!env.webhookToken || req.params.token !== env.webhookToken) {
     res.status(404).json({ error: 'NOT_FOUND' });
     return;
@@ -47,4 +57,9 @@ webhookRouter.post('/intasend/:token', async (req, res) => {
   } catch (err) {
     console.error('[webhook] processing failed:', err);
   }
-});
+}
+
+webhookRouter.post('/palpluss/:token', handleCallback);
+webhookRouter.post('/intasend/:token', handleCallback);
+
+console.log('[webhook] live provider: ' + PROVIDER);

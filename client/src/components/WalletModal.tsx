@@ -45,7 +45,7 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
     if (!Number.isFinite(value) || value <= 0) return 'Enter a valid amount.';
     if (value < minimum) {
       return inUsd
-        ? 'Minimum is USD ' + minimum + '.'
+        ? 'Minimum is $' + minimum + '.'
         : 'Minimum is ' + ksh(minimum, true) + '.';
     }
     if (!isDeposit && value > available) return 'You only have ' + ksh(available) + ' available.';
@@ -176,7 +176,7 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
           <div className="form-field">
             <label htmlFor="wallet-amount">Amount</label>
             <div className="input-prefix">
-              <span className="pfx">{inUsd ? 'USD' : 'KSh'}</span>
+              <span className="pfx">{inUsd ? '$' : 'KSh'}</span>
               {/* type="text" with a decimal inputMode rather than type="number":
                   the number input has focus and keyboard quirks on Android that
                   can leave the field untypable, and it buys nothing here. */}
@@ -197,7 +197,7 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
             </div>
             {inUsd ? (
               <div className="fx-line">
-                <span>Minimum USD {minimum} · 1 USD = KSh {rate.toFixed(2)}</span>
+                <span>Minimum ${minimum} · $1 = KSh {rate.toFixed(2)}</span>
                 <b className="tnum">
                   {Number.isFinite(value) && value > 0
                     ? 'M-Pesa will ask for ' + ksh(Math.round(value * rate), true)
@@ -224,7 +224,7 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
                     setError(null);
                   }}
                 >
-                  {inUsd ? 'USD ' + v : v >= 1000 ? v / 1000 + 'K' : v}
+                  {inUsd ? '$' + v : v >= 1000 ? v / 1000 + 'K' : v}
                 </button>
               ))}
           </div>

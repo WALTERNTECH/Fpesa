@@ -48,7 +48,7 @@ walletRouter.post('/deposit', requireAuth, moveLimiter, async (req, res) => {
     if (parsed.data.amount < env.minDepositUsd) {
       res.status(400).json({
         error: 'AMOUNT_TOO_LOW',
-        message: 'Minimum deposit is USD ' + env.minDepositUsd + '.',
+        message: 'Minimum deposit is $' + env.minDepositUsd + '.',
       });
       return;
     }

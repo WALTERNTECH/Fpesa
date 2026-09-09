@@ -40,7 +40,45 @@ import {
  * hard to find; the re-read is what makes forging one useless.
  */
 
-const BASE = () => (env.palpluss.baseUrl || 'https://api.palpluss.com').replace(/\/+$/, '');
+/**
+ * The host only — every path below carries its own /v1.
+ *
+ * A base URL that already ended in /v1 produced /v1/v1/payments/stk and a 404
+ * on every single payment, so the version segment is stripped here rather than
+ * trusted. Configuration that can silently break all deposits should not be
+ * possible to get wrong in the obvious way.
+ */
+const BASE = () =>
+  (env.palpluss.baseUrl || 'https://api.palpluss.com')
+    .replace(/\/+$/, '')
+    .replace(/\/v\d+$/, '');
+
+/**
+ * Pulls a readable message out of their error envelope.
+ *
+ * The shape is { success, error: { message, code, details } } and `message` is
+ * a string for routing failures but an array of validation strings for a bad
+ * body. Reading the top level instead produced "[object Object]" on screen,
+ * which told the trader nothing and told us nothing either — the real cause was
+ * only visible in the server log.
+ */
+function errorText(parsed: unknown, status: number): { message: string; code: string } {
+  const body = parsed as
+    | { error?: { message?: unknown; code?: string }; message?: unknown; code?: string }
+    | null;
+  const err = body?.error ?? body ?? {};
+  const raw = (err as { message?: unknown }).message ?? (body as { message?: unknown })?.message;
+
+  const message = Array.isArray(raw)
+    ? raw.filter((x) => typeof x === 'string').join('; ')
+    : typeof raw === 'string'
+      ? raw
+      : 'Payment provider returned ' + status;
+
+  const code =
+    (err as { code?: string }).code ?? (body as { code?: string })?.code ?? '';
+  return { message, code };
+}
 
 /**
  * Which encoding the API accepted. Starts at the documented one and only moves
@@ -124,13 +162,11 @@ async function call<T>(method: Method, path: string, body?: unknown): Promise<T>
   }
 
   if (!out.ok) {
-    const b = out.parsed as { message?: string; error?: string; code?: string } | null;
-    const message = b?.message ?? b?.error ?? 'Payment provider returned ' + out.status;
+    const { message, code } = errorText(out.parsed, out.status);
     console.error('[palpluss] ' + method + ' ' + path + ' -> ' + out.status + ' ' + out.text.slice(0, 400));
 
     // These are operator problems, not trader problems, so they are worth
     // saying plainly in the log rather than only as a generic failure.
-    const code = b?.code ?? '';
     if (code === 'INSUFFICIENT_SERVICE_BALANCE' || out.status === 402) {
       console.error('[palpluss] service wallet is empty — top it up in the console');
     }
@@ -325,6 +361,7 @@ export async function walletBalance(): Promise<number | null> {
     return null;
   }
 }
+
 
 // ---------------------------------------------------------------- webhooks
 /**

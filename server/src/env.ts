@@ -169,6 +169,20 @@ export const env = {
   demoStartingBalance: num('DEMO_STARTING_BALANCE', 10000),
   minDeposit: num('MIN_DEPOSIT', 1000),
   /**
+   * Deposits are quoted to the customer in dollars, because that is the unit
+   * they think in for a trading account. Everything else — balances, stakes,
+   * payouts, the book — stays in shillings, and the shilling figure M-Pesa
+   * actually charges is worked out server-side at the moment of the request.
+   */
+  depositCurrency: str('DEPOSIT_CURRENCY', 'USD') as 'USD' | 'KES',
+  minDepositUsd: num('MIN_DEPOSIT_USD', 10),
+  /**
+   * Used only when the rate feed is unreachable. Kept deliberately conservative
+   * for the customer: too low a rate charges them fewer shillings per dollar,
+   * never more.
+   */
+  fxUsdKesFallback: num('FX_USD_KES_FALLBACK', 129),
+  /**
    * Ceiling on a single deposit. **0 means no ceiling of ours.**
    *
    * Note what that does and does not remove. M-Pesa itself caps one customer

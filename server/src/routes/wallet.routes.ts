@@ -5,6 +5,7 @@ import { db } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
 import { env } from '../env.js';
 import { exposureGuard } from '../services/exposure.js';
+import { toKes, usdKes } from '../services/fx.js';
 import {
   WalletError,
   startDeposit,
@@ -35,11 +36,35 @@ walletRouter.post('/deposit', requireAuth, moveLimiter, async (req, res) => {
     res.status(400).json({ error: 'VALIDATION', message: 'Enter a valid amount.' });
     return;
   }
+  const currency = (req.body as { currency?: string }).currency === 'USD' ? 'USD' : 'KES';
+
+  // The rate is read here rather than accepted from the browser. What the
+  // client showed was a quote; this is what the customer is actually charged,
+  // and the two are allowed to differ by whatever the market did in between.
+  let amountKes = parsed.data.amount;
+  let quoted: { usd: number; rate: number; kes: number } | null = null;
+
+  if (currency === 'USD') {
+    if (parsed.data.amount < env.minDepositUsd) {
+      res.status(400).json({
+        error: 'AMOUNT_TOO_LOW',
+        message: 'Minimum deposit is USD ' + env.minDepositUsd + '.',
+      });
+      return;
+    }
+    const rate = await usdKes();
+    amountKes = toKes(parsed.data.amount, rate);
+    quoted = { usd: parsed.data.amount, rate, kes: amountKes };
+  }
+
   try {
-    const tx = await startDeposit(req.user!, parsed.data.amount);
+    const tx = await startDeposit(req.user!, amountKes);
     res.status(202).json({
       transaction: tx,
-      message: 'Check your phone and enter your M-Pesa PIN to complete the deposit.',
+      quoted,
+      message:
+        'Check your phone and enter your M-Pesa PIN to approve KSh ' +
+        amountKes.toLocaleString('en-KE') + '.',
     });
   } catch (err) {
     if (err instanceof WalletError) {

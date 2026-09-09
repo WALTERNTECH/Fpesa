@@ -29,14 +29,25 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
   const pollRef = useRef<number | null>(null);
   const deadlineRef = useRef(0);
 
-  const minimum = isDeposit ? config.minDeposit : config.minWithdrawal;
+  // Deposits are quoted in dollars because that is the unit a trading account
+  // is thought about in; withdrawals stay in shillings because that is what
+  // lands on the phone. The ledger is shillings throughout either way.
+  const inUsd = isDeposit && config.depositCurrency === 'USD';
+  const minimum = isDeposit
+    ? (inUsd ? config.minDepositUsd : config.minDeposit)
+    : config.minWithdrawal;
+  const rate = config.usdKes || 129;
   const value = Number(amount);
   const available = user?.realBalance ?? 0;
 
   const validationError = (): string | null => {
     if (amount === '') return null;
     if (!Number.isFinite(value) || value <= 0) return 'Enter a valid amount.';
-    if (value < minimum) return 'Minimum is ' + ksh(minimum, true) + '.';
+    if (value < minimum) {
+      return inUsd
+        ? 'Minimum is USD ' + minimum + '.'
+        : 'Minimum is ' + ksh(minimum, true) + '.';
+    }
     if (!isDeposit && value > available) return 'You only have ' + ksh(available) + ' available.';
     return null;
   };
@@ -100,7 +111,7 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
     try {
       const res = await api.post<{ transaction: Transaction }>(
         isDeposit ? '/wallet/deposit' : '/wallet/withdraw',
-        { amount: value }
+        { amount: value, ...(inUsd ? { currency: 'USD' } : {}) }
       );
       setTxn(res.transaction);
       startPolling(res.transaction.id);
@@ -165,29 +176,43 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
           <div className="form-field">
             <label htmlFor="wallet-amount">Amount</label>
             <div className="input-prefix">
-              <span className="pfx">KSh</span>
+              <span className="pfx">{inUsd ? 'USD' : 'KSh'}</span>
+              {/* type="text" with a decimal inputMode rather than type="number":
+                  the number input has focus and keyboard quirks on Android that
+                  can leave the field untypable, and it buys nothing here. */}
               <input
                 id="wallet-amount"
                 className={'input' + (inlineError ? ' invalid' : '')}
-                type="number"
-                inputMode="numeric"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
                 value={amount}
-                min={minimum}
                 onChange={(e) => {
-                  setAmount(e.target.value);
+                  setAmount(e.target.value.replace(/[^0-9.]/g, ''));
                   setError(null);
                 }}
                 placeholder={String(minimum)}
                 required
               />
             </div>
-            <div className="field-error" style={{ color: 'var(--subtle)' }}>
-              Minimum {ksh(minimum, true)}.
-            </div>
+            {inUsd ? (
+              <div className="fx-line">
+                <span>Minimum USD {minimum} · 1 USD = KSh {rate.toFixed(2)}</span>
+                <b className="tnum">
+                  {Number.isFinite(value) && value > 0
+                    ? 'M-Pesa will ask for ' + ksh(Math.round(value * rate), true)
+                    : 'Enter an amount'}
+                </b>
+              </div>
+            ) : (
+              <div className="field-error" style={{ color: 'var(--subtle)' }}>
+                Minimum {ksh(minimum, true)}.
+              </div>
+            )}
           </div>
 
           <div className="chip-row" style={{ marginBottom: 18 }}>
-            {QUICK.filter((v) => v >= minimum)
+            {(inUsd ? [10, 25, 50, 100] : QUICK).filter((v) => v >= minimum)
               .slice(0, 4)
               .map((v) => (
                 <button
@@ -199,7 +224,7 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
                     setError(null);
                   }}
                 >
-                  {v >= 1000 ? v / 1000 + 'K' : v}
+                  {inUsd ? 'USD ' + v : v >= 1000 ? v / 1000 + 'K' : v}
                 </button>
               ))}
           </div>

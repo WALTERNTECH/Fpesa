@@ -7,6 +7,7 @@ import { exposureGuard } from '../services/exposure.js';
 import { solvency } from '../services/solvency.js';
 import { analyseTrade } from '../lib/stats.js';
 import { env } from '../env.js';
+import { peekRate } from '../services/fx.js';
 
 export const marketRouter = Router();
 
@@ -195,6 +196,10 @@ marketRouter.get('/config', async (_req, res) => {
     houseEdge: env.houseEdge,
     turnoverMultiple: env.turnoverMultiple,
     minDeposit: env.minDeposit,
+    /** Deposits are entered in this currency; everything else is shillings. */
+    depositCurrency: env.depositCurrency,
+    minDepositUsd: env.minDepositUsd,
+    usdKes: peekRate(),
     maxDeposit: env.maxDeposit,
     minWithdrawal: env.minWithdrawal,
     maxWithdrawal: env.maxWithdrawal,

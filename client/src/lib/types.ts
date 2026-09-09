@@ -206,6 +206,10 @@ export type PlatformConfig = {
   provablyFair: boolean;
   desk: DeskState;
   minDeposit: number;
+  /** Deposits are entered in this currency; the ledger stays in shillings. */
+  depositCurrency: 'USD' | 'KES';
+  minDepositUsd: number;
+  usdKes: number;
   /** 0 means no ceiling of ours — see the server's env.ts. */
   maxDeposit: number;
   minWithdrawal: number;

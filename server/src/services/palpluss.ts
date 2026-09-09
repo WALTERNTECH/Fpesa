@@ -19,12 +19,12 @@ import {
  *
  * ## Two things their documentation is ambiguous about
  *
- * **Auth encoding.** The reference shows `Authorization: Basic YOUR_API_KEY`
- * but also describes it as "API key in username field, password empty", which
- * is standard HTTP Basic and would be base64("key:"). Those are different
- * headers and only one of them authenticates. Rather than guess and fail in
- * production, the first 401 retries with the other encoding and remembers which
- * one worked.
+ * **Auth encoding.** Their authentication guide is explicit —
+ * `Basic <base64(API_KEY:)>`, a trailing colon for the empty password — while
+ * the API reference shows a bare `Basic YOUR_API_KEY`. The guide wins and is
+ * the default; the fallback below survives the other one being right after all,
+ * because a payment integration that cannot authenticate at 2am is worse than a
+ * small shim.
  *
  * **Path prefixes.** The endpoint pages document `/v1/...` while their
  * machine-readable index lists `/api/...`. Both are overridable by environment
@@ -42,7 +42,10 @@ import {
 
 const BASE = () => (env.palpluss.baseUrl || 'https://api.palpluss.com').replace(/\/+$/, '');
 
-/** Which auth encoding the API actually accepted, once we know. */
+/**
+ * Which encoding the API accepted. Starts at the documented one and only moves
+ * if that is rejected.
+ */
 let authMode: 'raw' | 'basic' | null = null;
 
 function authHeader(mode: 'raw' | 'basic'): string {
@@ -103,7 +106,7 @@ async function call<T>(method: Method, path: string, body?: unknown): Promise<T>
     );
   }
 
-  const first = authMode ?? 'raw';
+  const first = authMode ?? 'basic';
   let out = await attempt<T>(method, path, body, first);
 
   // Their docs describe two different encodings of the same header. If the one

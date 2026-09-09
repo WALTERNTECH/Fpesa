@@ -59,7 +59,7 @@ export const env = {
     stkPath: str('PALPLUSS_STK_PATH', '/v1/payments/stk'),
     b2cPath: str('PALPLUSS_B2C_PATH', '/v1/b2c/payouts'),
     txnPath: str('PALPLUSS_TXN_PATH', '/v1/transactions/{id}'),
-    balancePath: str('PALPLUSS_BALANCE_PATH', '/v1/wallets/balance'),
+    balancePath: str('PALPLUSS_BALANCE_PATH', '/v1/wallets/service/balance'),
   },
 
   intasend: {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../store/app';
-import { ksh, price as fmtPrice } from '../lib/format';
+import { usd, price as fmtPrice } from '../lib/format';
 import { marginUsed, unrealisedProfit } from '../lib/pnl';
 import type { Trade } from '../lib/types';
 
@@ -35,7 +35,7 @@ function Countdown({ trade, now }: { trade: Trade; now: number }): JSX.Element {
 }
 
 export function OpenPositions(): JSX.Element | null {
-  const { openTrades, price } = useApp();
+  const { openTrades, price, toUsd } = useApp();
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -74,7 +74,7 @@ export function OpenPositions(): JSX.Element | null {
                 <div className="dir">
                   {trade.direction === 'BUY' ? 'Buy' : 'Sell'} · ×{trade.multiplier}
                 </div>
-                <div className="stake tnum">{ksh(trade.stake)}</div>
+                <div className="stake tnum">{usd(toUsd(trade.stake))}</div>
                 <div className="entry tnum">
                   {fmtPrice(trade.entryPrice)} → {fmtPrice(price)}
                   {trade.stopOutPrice !== null && (
@@ -89,7 +89,7 @@ export function OpenPositions(): JSX.Element | null {
               </div>
 
               <div className={'pnl tnum ' + (flat ? '' : winning ? 'win' : 'lose')}>
-                {flat ? '—' : (winning ? '+' : '−') + ksh(Math.abs(profit))}
+                {flat ? '—' : (winning ? '+' : '−') + usd(toUsd(Math.abs(profit)))}
               </div>
             </div>
           );

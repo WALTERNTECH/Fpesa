@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../store/app';
 import { useInstall } from '../lib/pwa';
-import { ksh, price as fmtPrice, displayPhone, initials } from '../lib/format';
+import { usd, price as fmtPrice, displayPhone, initials } from '../lib/format';
 import {
   BrandMark,
   IconArrowDown,
@@ -28,7 +28,7 @@ export function Brand(): JSX.Element {
 export function Header(): JSX.Element {
   const {
     user, quote, price, tickDir, accountMode, setAccountMode,
-    openModal, logout, resetDemo, config,
+    openModal, logout, resetDemo, config, toUsd,
   } = useApp();
   const { available: canInstall, canPrompt, install } = useInstall();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -123,7 +123,7 @@ export function Header(): JSX.Element {
               >
                 <span className="avatar self">{initials(user.username)}</span>
                 <span className="acct-meta">
-                  <span className="bal tnum">{ksh(balance)}</span>
+                  <span className="bal tnum">{usd(toUsd(balance))}</span>
                   <span className="who">{accountMode === 'demo' ? 'Demo' : 'Live'}</span>
                 </span>
                 <IconChevron size={14} />

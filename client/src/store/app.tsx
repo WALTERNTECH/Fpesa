@@ -55,7 +55,16 @@ type AppValue = {
 
   accountMode: AccountMode;
   setAccountMode: (mode: AccountMode) => void;
+  /** The trader's balance, in shillings — the unit the ledger is kept in. */
   balance: number;
+
+  /* The trading screen reads in dollars. The ledger, settlement, the solvency
+     guard and the operator's book are all shillings; these convert at the rate
+     the server published, and they live here so no two components can disagree
+     about what a figure is worth. */
+  rate: number;
+  toUsd: (kes: number) => number;
+  toKes: (dollars: number) => number;
 
   openTrades: Trade[];
 
@@ -106,6 +115,7 @@ type AppValue = {
 
 const DEFAULT_CONFIG: PlatformConfig = {
   minStake: 50,
+  minStakeUsd: 1,
   maxStake: 1000000,
   maxStakeLive: 0,
   payoutRate: 0.87,
@@ -161,7 +171,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
   const [openTrades, setOpenTrades] = useState<Trade[]>([]);
   const [modal, setModal] = useState<ModalKind>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [stake, setStake] = useState<string>(String(DEFAULT_CONFIG.minStake));
+  const [stake, setStake] = useState<string>(String(DEFAULT_CONFIG.minStakeUsd));
   const [duration, setDuration] = useState<number>(10);
   const [tradeBusy, setTradeBusy] = useState<Direction | null>(null);
   const [tradeError, setTradeError] = useState<string | null>(null);
@@ -222,7 +232,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       if (cfg.status === 'fulfilled') {
         setConfig(cfg.value);
         if (cfg.value.desk) setDesk(cfg.value.desk);
-        setStake(String(cfg.value.minStake));
+        setStake(String(cfg.value.minStakeUsd));
         if (cfg.value.durations.includes(10)) setDuration(10);
         else if (cfg.value.durations[0]) setDuration(cfg.value.durations[0]);
         opening = cfg.value.symbol;
@@ -336,7 +346,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
             icon: up ? '▲' : '▼',
             title:
               r.completedCount + ' of ' + r.totalCount + ' trades  ' +
-              (up ? '+' : '−') + 'KSh ' + Math.abs(r.netProfit).toFixed(2),
+              (up ? '+' : '−') + '$' + toUsd(Math.abs(r.netProfit)).toFixed(2),
             detail: r.status === 'ABORTED'
               ? (r.abortReason ?? 'Run stopped early.')
               : 'Auto-run complete.',
@@ -399,14 +409,14 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
           pushToast({
             tone: 'win',
             icon: '▲',
-            title: 'Closed  +KSh ' + profit.toFixed(2),
+            title: 'Closed  +$' + toUsd(profit).toFixed(2),
             detail: why,
           });
         } else if (trade.status === 'LOST') {
           pushToast({
             tone: 'lose',
             icon: '▼',
-            title: 'Closed  −KSh ' + Math.abs(profit).toFixed(2),
+            title: 'Closed  −$' + toUsd(Math.abs(profit)).toFixed(2),
             detail: why,
           });
         } else if (trade.status === 'TIE') {
@@ -502,6 +512,17 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
 
   const balance = user ? (accountMode === 'demo' ? user.demoBalance : user.realBalance) : 0;
 
+  // Guarded: a zero rate would turn every figure on the screen into Infinity.
+  const rate = config.usdKes > 0 ? config.usdKes : 129;
+  const toUsd = useCallback(
+    (kes: number) => (Number.isFinite(kes) ? kes / rate : 0),
+    [rate]
+  );
+  const toKes = useCallback(
+    (dollars: number) => (Number.isFinite(dollars) ? Math.round(dollars * rate * 100) / 100 : 0),
+    [rate]
+  );
+
   /**
    * The active instrument. Multipliers differ per market — they scale inversely
    * with volatility so the odds stay identical — so the panel must read this
@@ -532,18 +553,24 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       ? Math.max(0, Math.min(config.maxStake, config.maxStakeLive))
       : config.maxStake;
 
+  // The ticket is typed in dollars while every limit is held in shillings, so
+  // the comparison happens in shillings and only the message converts back.
+  const stakeKes = toKes(stakeAmount);
+
   const stakeIssue = ((): string | null => {
     if (stake.trim() === '') return null;
     if (!Number.isFinite(stakeAmount)) return 'Enter a valid amount.';
-    if (stakeAmount < config.minStake) return 'Minimum trade is KSh ' + config.minStake + '.';
-    if (stakeAmount > stakeCeiling) {
+    if (stakeAmount < config.minStakeUsd) {
+      return 'Minimum trade is $' + config.minStakeUsd + '.';
+    }
+    if (stakeKes > stakeCeiling) {
       return accountMode === 'real' && stakeCeiling < config.maxStake
         ? stakeCeiling < config.minStake
           ? 'Live trading is at capacity for the moment. Demo is open.'
-          : 'Largest live trade right now is KSh ' + stakeCeiling.toLocaleString('en-KE') + '.'
-        : 'Maximum trade is KSh ' + config.maxStake.toLocaleString('en-KE') + '.';
+          : 'Largest live trade right now is $' + (stakeCeiling / rate).toFixed(2) + '.'
+        : 'Maximum trade is $' + (config.maxStake / rate).toFixed(2) + '.';
     }
-    if (user && stakeAmount > balance) {
+    if (user && stakeKes > balance) {
       return accountMode === 'demo'
         ? 'Demo balance is too low.'
         : 'Balance too low — deposit to continue.';
@@ -553,9 +580,9 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
 
   const canTrade =
     Number.isFinite(stakeAmount) &&
-    stakeAmount >= config.minStake &&
-    stakeAmount <= stakeCeiling &&
-    (!user || stakeAmount <= balance) &&
+    stakeAmount >= config.minStakeUsd &&
+    stakeKes <= stakeCeiling &&
+    (!user || stakeKes <= balance) &&
     price > 0;
 
   const submitTrade = useCallback(
@@ -564,7 +591,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
         setModal('login');
         return;
       }
-      const amount = Number(stake);
+      const amount = toKes(Number(stake));
       if (!Number.isFinite(amount) || tradeBusy) return;
 
       setTradeBusy(direction);
@@ -596,7 +623,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       setModal('login');
       return;
     }
-    const amount = Number(stake);
+    const amount = toKes(Number(stake));
     if (!Number.isFinite(amount) || autoBusy) return;
 
     setAutoBusy(true);
@@ -715,6 +742,9 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       accountMode,
       setAccountMode,
       balance,
+      rate,
+      toUsd,
+      toKes,
       openTrades,
       stake,
       setStake,
@@ -748,7 +778,8 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
     [
       ready, config, user, quote, price, tickDir, connected, online, accountMode,
       instruments, symbol, setSymbol, instrument, multiplier,
-      balance, openTrades, stake, duration, tradeBusy, tradeError, stakeIssue,
+      balance, rate, toUsd, toKes,
+      openTrades, stake, duration, tradeBusy, tradeError, stakeIssue,
       canTrade, stakeCeiling, submitTrade, desk, autoRunCount, run, autoBusy,
       autoScan, autoStage, startAuto, modal, openModal, closeModal, login, register,
       logout, refreshUser, resetDemo, toasts, pushToast,

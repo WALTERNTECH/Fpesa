@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useApp } from '../store/app';
-import { ksh, durationLabel } from '../lib/format';
+import { usd, durationLabel } from '../lib/format';
 import { OpenPositions } from './OpenPositions';
 import { IconArrowDown, IconArrowUp } from './Icons';
 
@@ -9,7 +9,7 @@ export function TradePanel(): JSX.Element {
     user, config, accountMode, setAccountMode, balance, openModal,
     stake, setStake, duration, setDuration,
     tradeBusy, tradeError, setTradeError, stakeIssue, canTrade, submitTrade, desk,
-    run, startAuto, autoBusy, symbol, multiplier, stakeCeiling,
+    run, startAuto, autoBusy, symbol, multiplier, stakeCeiling, toUsd,
   } = useApp();
 
   const stakeAmount = Number(stake);
@@ -19,7 +19,8 @@ export function TradePanel(): JSX.Element {
   // The move that would wipe the stake out, shown as a percentage because the
   // absolute price level depends on which side the trader takes.
   const wipeoutMovePct = useMemo(() => (1 / multiplier) * 100, [multiplier]);
-  // What the spread costs on this ticket, in shillings, stated up front.
+  // What the spread costs on this ticket, stated up front. The ticket is in
+  // dollars, so this and maxProfit above are already dollars.
   const spreadCost = Number.isFinite(stakeAmount)
     ? stakeAmount * config.houseEdge
     : 0;
@@ -28,10 +29,14 @@ export function TradePanel(): JSX.Element {
     // Four chips spanning the range, not four clustered at the floor. The old
     // ladder took the lowest four of a fixed list, which on a 50–150,000 range
     // topped out at 1,000 and left everything above it reachable only by typing.
-    const options = [config.minStake, 500, 5000, stakeCeiling];
-    return Array.from(new Set(options.filter((v) => v >= config.minStake && v <= stakeCeiling)))
-      .sort((a, b) => a - b);
-  }, [config.minStake, stakeCeiling]);
+    // Dollar figures now, and the ceiling converts because the book's limit
+    // is held in shillings.
+    const ceilingUsd = Math.floor(toUsd(stakeCeiling));
+    const options = [config.minStakeUsd, 5, 25, ceilingUsd];
+    return Array.from(
+      new Set(options.filter((v) => v >= config.minStakeUsd && v <= ceilingUsd))
+    ).sort((a, b) => a - b);
+  }, [config.minStakeUsd, stakeCeiling, toUsd]);
 
   // Real trading is gated while the book is over its daily payout target.
   const deskClosed = accountMode === 'real' && !desk.open;
@@ -67,7 +72,7 @@ export function TradePanel(): JSX.Element {
               <div className="label">
                 {accountMode === 'demo' ? 'Practice balance' : 'Tradeable balance'}
               </div>
-              <div className="value tnum">{user ? ksh(balance) : ksh(0)}</div>
+              <div className="value tnum">{usd(user ? toUsd(balance) : 0)}</div>
             </div>
             <span className="tag">{accountMode === 'demo' ? 'Demo' : 'Live'}</span>
           </div>
@@ -76,23 +81,24 @@ export function TradePanel(): JSX.Element {
             <div className="field-label">
               <span>Trade amount</span>
               <span className="hint">
-                {ksh(config.minStake, true)} – {ksh(stakeCeiling, true)}
+                {usd(config.minStakeUsd)} – {usd(toUsd(stakeCeiling))}
               </span>
             </div>
             <div className={'amount-input' + (stakeIssue ? ' invalid' : '')}>
-              <span className="cur">KSh</span>
+              <span className="cur">$</span>
+              {/* text + decimal rather than a number input: the number input has
+                  focus and keyboard quirks on Android, and the bounds live in
+                  the store anyway, where they are compared in shillings. */}
               <input
-                type="number"
-                inputMode="numeric"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
                 value={stake}
-                min={config.minStake}
-                max={stakeCeiling}
-                step={10}
                 onChange={(e) => {
-                  setStake(e.target.value);
+                  setStake(e.target.value.replace(/[^0-9.]/g, ''));
                   setTradeError(null);
                 }}
-                aria-label="Trade amount in Kenyan shillings"
+                aria-label="Trade amount in US dollars"
               />
             </div>
             <div className="chip-row">
@@ -106,11 +112,7 @@ export function TradePanel(): JSX.Element {
                     setTradeError(null);
                   }}
                 >
-                  {value >= 1000000
-                    ? value / 1000000 + 'M'
-                    : value >= 1000
-                      ? value / 1000 + 'K'
-                      : value}
+                  {value >= 1000 ? '$' + (value / 1000).toFixed(0) + 'K' : '$' + value}
                 </button>
               ))}
             </div>
@@ -146,7 +148,7 @@ export function TradePanel(): JSX.Element {
             </div>
             <div className="term">
               <span className="k">Max profit</span>
-              <span className="v tnum up">{ksh(maxProfit)}</span>
+              <span className="v tnum up">{usd(maxProfit)}</span>
             </div>
             <div className="term">
               <span className="k">Closes itself if price moves</span>
@@ -157,7 +159,7 @@ export function TradePanel(): JSX.Element {
             <div className="term">
               <span className="k">Spread (cost to open)</span>
               <span className="v tnum">
-                {ksh(spreadCost)} · {(config.houseEdge * 100).toFixed(1)}%
+                {usd(spreadCost)} · {(config.houseEdge * 100).toFixed(1)}%
               </span>
             </div>
           </div>
@@ -179,7 +181,7 @@ export function TradePanel(): JSX.Element {
                 Position {Math.min(run.completedCount + 1, run.totalCount)} of {run.totalCount}
               </span>
               <b className={'tnum ' + (run.netProfit >= 0 ? 'up' : 'down')}>
-                {run.netProfit >= 0 ? '+' : '−'}{ksh(Math.abs(run.netProfit))}
+                {run.netProfit >= 0 ? '+' : '−'}{usd(toUsd(Math.abs(run.netProfit)))}
               </b>
             </div>
           )}

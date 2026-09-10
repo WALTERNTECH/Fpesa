@@ -1,13 +1,13 @@
 import { useState, type FormEvent } from 'react';
 import { useApp } from '../store/app';
 import { ApiError } from '../lib/api';
-import { ksh } from '../lib/format';
+import { usd } from '../lib/format';
 import { Modal } from './Modal';
 
 type Mode = 'login' | 'register';
 
 export function AuthModal({ mode }: { mode: Mode }): JSX.Element {
-  const { closeModal, openModal, login, register, config } = useApp();
+  const { closeModal, openModal, login, register, config, toUsd } = useApp();
 
   const [username, setUsername] = useState('');
   const [phone, setPhone] = useState('');
@@ -67,7 +67,7 @@ export function AuthModal({ mode }: { mode: Mode }): JSX.Element {
       title={isRegister ? 'Create account' : 'Log in'}
       subtitle={
         isRegister
-          ? 'Demo account credited with ' + ksh(config.demoStartingBalance, true) + '.'
+          ? 'Demo account credited with ' + usd(toUsd(config.demoStartingBalance)) + '.'
           : undefined
       }
       onClose={closeModal}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { useApp } from '../store/app';
-import { ksh } from '../lib/format';
+import { usd } from '../lib/format';
 import type { HistoryResponse, Trade } from '../lib/types';
 
 type Period = 'day' | 'month' | 'all';
@@ -62,8 +62,12 @@ function clockOf(iso: string | null): string {
   return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
 }
 
-function signed(n: number): string {
-  return (n >= 0 ? '+' : '−') + ksh(Math.abs(n));
+/**
+ * Every figure stored here is shillings; the statement reads in dollars, so the
+ * converter has to come from the component rather than being baked in.
+ */
+function signedUsd(kes: number, toUsd: (n: number) => number): string {
+  return (kes >= 0 ? '+' : '−') + usd(toUsd(Math.abs(kes)));
 }
 
 /**
@@ -75,7 +79,10 @@ function signed(n: number): string {
  * paid into it.
  */
 export function TradeHistory(): JSX.Element {
-  const { user, accountMode, openModal, instruments } = useApp();
+  const { user, accountMode, openModal, instruments, toUsd } = useApp();
+
+  const signed = (kes: number): string => signedUsd(kes, toUsd);
+  const money = (kes: number): string => usd(toUsd(kes));
 
   const now = new Date();
   const [period, setPeriod] = useState<Period>('month');
@@ -180,7 +187,7 @@ export function TradeHistory(): JSX.Element {
           </div>
           <div className="ht">
             <span className="k">Staked</span>
-            <span className="v tnum">{w ? ksh(w.volume, true) : '—'}</span>
+            <span className="v tnum">{w ? money(w.volume) : '—'}</span>
           </div>
           <div className="ht">
             <span className="k">Best / worst</span>
@@ -282,7 +289,7 @@ export function TradeHistory(): JSX.Element {
                           <span className="arrow">→</span>
                           {t.exitPrice ?? '—'}
                         </span>
-                        <span className="hr-stake tnum">{ksh(t.stake, true)}</span>
+                        <span className="hr-stake tnum">{money(t.stake)}</span>
                         <span
                           className={
                             'hr-pnl tnum ' + (won ? 'up' : lost ? 'down' : 'flat')
@@ -308,15 +315,15 @@ export function TradeHistory(): JSX.Element {
             <div className="hl-grid">
               <div>
                 <span className="k">Deposited</span>
-                <span className="v tnum">{ksh(life.deposits, true)}</span>
+                <span className="v tnum">{money(life.deposits)}</span>
               </div>
               <div>
                 <span className="k">Withdrawn</span>
-                <span className="v tnum">{ksh(life.withdrawals, true)}</span>
+                <span className="v tnum">{money(life.withdrawals)}</span>
               </div>
               <div>
                 <span className="k">Balance now</span>
-                <span className="v tnum">{ksh(life.balance, true)}</span>
+                <span className="v tnum">{money(life.balance)}</span>
               </div>
               <div>
                 <span className="k">Trades</span>

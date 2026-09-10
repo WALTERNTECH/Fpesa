@@ -10,6 +10,32 @@ export function ksh(value: number, whole = false): string {
   return 'KSh ' + (whole ? kesWhole.format(n) : kesFormatter.format(n));
 }
 
+const usdFormatter = new Intl.NumberFormat('en-US', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const usdWhole = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+
+/**
+ * $124.50 — how the trading side reads.
+ *
+ * The ledger is shillings from end to end: balances, stakes, settlement, the
+ * solvency guard, the operator's book. This converts for display only, at the
+ * rate the server published, so nothing about the money changes — only the unit
+ * a trader reads it in.
+ */
+export function usd(value: number, whole = false): string {
+  const n = Number.isFinite(value) ? value : 0;
+  return '$' + (whole && Math.abs(n) >= 1000 ? usdWhole.format(n) : usdFormatter.format(n));
+}
+
+export function usdShort(value: number): string {
+  const n = Math.abs(value);
+  if (n >= 1_000_000) return '$' + (value / 1_000_000).toFixed(1) + 'M';
+  if (n >= 10_000) return '$' + (value / 1000).toFixed(1) + 'K';
+  return usd(value);
+}
+
 export function kshShort(value: number): string {
   const n = Math.abs(value);
   if (n >= 1_000_000) return 'KSh ' + (value / 1_000_000).toFixed(1) + 'M';

@@ -168,6 +168,7 @@ marketRouter.get('/config', async (_req, res) => {
     // arrive over the socket as a "desk" message.
     desk: exposureGuard.state(),
     minStake: env.minStake,
+    minStakeUsd: env.minStakeUsd,
     maxStake: env.maxStake,
     /**
      * The largest live stake the book can currently cover. Demo is unaffected.

@@ -1,5 +1,5 @@
 import { useApp } from '../store/app';
-import { ksh, durationLabel } from '../lib/format';
+import { usd, durationLabel } from '../lib/format';
 
 /**
  * Phone-only action bar pinned to the bottom of the viewport.
@@ -64,7 +64,7 @@ export function TradeBar(): JSX.Element {
       >
         {/* The account mode is already on the header button, so the chip only
             carries what changes per trade — amount and expiry. */}
-        <span className="amt tnum">{ksh(Number(stake) || 0, true)}</span>
+        <span className="amt tnum">{usd(Number(stake) || 0)}</span>
         {/* Not ".dur" — that class is the duration *button* in the panel grid,
             and reusing it here inherited a border and a 46px min-height. */}
         <span className="exp tnum">{durationLabel(duration)}</span>

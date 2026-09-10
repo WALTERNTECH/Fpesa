@@ -165,6 +165,12 @@ export const env = {
    */
   turnoverMultiple: num('WITHDRAWAL_TURNOVER_MULTIPLE', 0),
   minStake: num('TRADE_MIN_STAKE', 50),
+  /**
+   * The floor a trader actually sees, in dollars, since the trading screen is
+   * denominated in dollars. TRADE_MIN_STAKE stays as the shilling floor the
+   * server enforces; this one has to convert to at least that much.
+   */
+  minStakeUsd: num('TRADE_MIN_STAKE_USD', 1),
   maxStake: num('TRADE_MAX_STAKE', 1000000),
   demoStartingBalance: num('DEMO_STARTING_BALANCE', 10000),
   minDeposit: num('MIN_DEPOSIT', 1000),

@@ -41,7 +41,7 @@ export function AutoRunSpinner(): JSX.Element | null {
 
         <div className="auto-title">
           {autoStage === 'scanning'
-            ? 'Reading the markets'
+            ? 'Scanning the markets'
             : autoStage === 'chosen'
               ? 'Best fit for ' + duration + 's'
               : 'Opening your positions'}

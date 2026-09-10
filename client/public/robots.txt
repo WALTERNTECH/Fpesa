@@ -1,2 +1,10 @@
+# https://www.fpesa.markets
 User-agent: *
 Allow: /
+
+# Nothing behind these is a page: they are JSON for the app itself, and
+# crawling them wastes budget that should go on the pages that matter.
+Disallow: /api/
+Disallow: /ws
+
+Sitemap: https://www.fpesa.markets/sitemap.xml

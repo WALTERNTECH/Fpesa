@@ -112,6 +112,10 @@ async function main(): Promise<void> {
           res.setHeader('Service-Worker-Allowed', '/');
         } else if (name === 'manifest.webmanifest') {
           res.setHeader('Cache-Control', 'public, max-age=3600');
+        } else if (name === 'robots.txt' || name === 'sitemap.xml') {
+          // Crawlers re-read these often; an hour is long enough to be cheap
+          // and short enough that a correction is picked up the same day.
+          res.setHeader('Cache-Control', 'public, max-age=3600');
         } else if (filePath.endsWith('index.html')) {
           res.setHeader('Cache-Control', 'no-cache');
         } else if (/\.[0-9a-f]{8,}\./i.test(name)) {
@@ -120,7 +124,23 @@ async function main(): Promise<void> {
       },
     })
   );
-  app.get('*', (_req, res) => {
+  /**
+   * Everything else is the app shell — but only "/" is a real page.
+   *
+   * The app has no client-side routing: login, register and the wallet are
+   * dialogs on the same URL. Returning 200 for every path meant a crawler could
+   * invent /pricing, /about, /anything and be told each one exists, which is a
+   * soft 404 — Google indexes the duplicates and the real page competes with
+   * its own shadows.
+   *
+   * The shell is still served so a mistyped link lands somewhere usable rather
+   * than on a bare error, but the status tells the truth.
+   */
+  app.get('*', (req, res) => {
+    const isRoot = req.path === '/' || req.path === '/index.html';
+    res.status(isRoot ? 200 : 404);
+    res.setHeader('Cache-Control', 'no-cache');
+    if (!isRoot) res.setHeader('X-Robots-Tag', 'noindex');
     res.sendFile(path.join(clientDist, 'index.html'));
   });
 

@@ -1,5 +1,6 @@
 import { useApp } from '../store/app';
 import { usd, durationLabel } from '../lib/format';
+import { IconArrowDown, IconArrowUp } from './Icons';
 
 /**
  * Phone-only action bar pinned to the bottom of the viewport.
@@ -14,7 +15,7 @@ export function TradeBar(): JSX.Element {
   const {
     user, stake, duration, config, accountMode, balance,
     tradeBusy, canTrade, openModal, desk, setAccountMode,
-    run, startAuto, autoBusy,
+    submitTrade,
   } = useApp();
 
   if (!user) {
@@ -70,25 +71,25 @@ export function TradeBar(): JSX.Element {
         <span className="exp tnum">{durationLabel(duration)}</span>
       </button>
 
-      {/* The pinned bar now carries one action: open the whole batch. Manual
-          Buy and Sell stay in the panel below for anyone choosing their own
-          side. */}
-      <button
-        className="bar-auto"
-        disabled={autoBusy || tradeBusy !== null || !canTrade}
-        onClick={() => void startAuto()}
-      >
-        {/* One label, nothing else. The batch size and cost are already on the
-            ticket chip beside it, and the run's progress has its own line under
-            the panel — repeating either here only crowded the tap target. */}
-        <span className="ba-main">
-          {run && run.status === 'RUNNING'
-            ? 'Position ' + Math.min(run.completedCount + 1, run.totalCount) +
-              ' of ' + run.totalCount
-            : 'Fpesa Auto'}
-        </span>
-      </button>
-
+      {/* Both sides, side by side, within reach of the chart above them. */}
+      <div className="bar-sides">
+        <button
+          className="bar-side buy"
+          disabled={tradeBusy !== null || !canTrade}
+          onClick={() => void submitTrade('BUY')}
+        >
+          <IconArrowUp size={16} />
+          {tradeBusy === 'BUY' ? 'Placing…' : 'Buy'}
+        </button>
+        <button
+          className="bar-side sell"
+          disabled={tradeBusy !== null || !canTrade}
+          onClick={() => void submitTrade('SELL')}
+        >
+          <IconArrowDown size={16} />
+          {tradeBusy === 'SELL' ? 'Placing…' : 'Sell'}
+        </button>
+      </div>
     </div>
   );
 }

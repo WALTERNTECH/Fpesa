@@ -9,7 +9,7 @@ export function TradePanel(): JSX.Element {
     user, config, accountMode, setAccountMode, balance, openModal,
     stake, setStake, duration, setDuration,
     tradeBusy, tradeError, setTradeError, stakeIssue, canTrade, submitTrade, desk,
-    run, startAuto, autoBusy, symbol, multiplier, stakeCeiling, toUsd,
+    run, startAuto, autoBusy, symbol, multiplier, stakeCeiling, toUsd, autoRunCount,
   } = useApp();
 
   const stakeAmount = Number(stake);
@@ -164,15 +164,17 @@ export function TradePanel(): JSX.Element {
             </div>
           </div>
 
-          {/* One tap opens the whole batch. Direction is left to the server,
-              which flips a coin per leg — there is nothing in a driftless
-              series to read, so any rule claiming otherwise would be invented. */}
+          {/* Reads every market's realised volatility, picks the one where
+              this duration is least likely to stop out, and opens the batch
+              there. It chooses the market, not the side — the series is
+              driftless, so the side stays a coin flip per leg. */}
           <button
             className="autotrade"
             disabled={autoBusy || tradeBusy !== null || deskClosed || (Boolean(user) && !canTrade)}
             onClick={() => void startAuto()}
           >
-            <span className="at-main">Fpesa Auto</span>
+            <span className="at-main">AI Scanner</span>
+            <span className="at-sub">Scans all {config.instruments.length} markets, then opens {autoRunCount} positions</span>
           </button>
 
           {run && run.status === 'RUNNING' && (

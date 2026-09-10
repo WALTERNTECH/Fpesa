@@ -1544,32 +1544,18 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .at-live b.down { color: var(--down); }
 
 /* The pinned bar's single action. */
-.bar-auto {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  min-height: 52px;
-  border-radius: var(--r);
-  background: linear-gradient(135deg, var(--blue) 0%, #1a63f0 100%);
-  color: #fff;
-  box-shadow: var(--shadow-blue);
-  transition: filter 0.16s var(--ease), transform 0.12s var(--ease);
-}
 .bar-auto:active:not(:disabled) { transform: translateY(1px); }
 .bar-auto:disabled { opacity: 0.45; cursor: not-allowed; }
 @media (hover: hover) {
   .bar-auto:hover:not(:disabled) { filter: brightness(1.08); }
 }
-.ba-main {
+.ba-main-retired {
   font-family: var(--font-display);
   font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
-.ba-sub { font-size: 10.5px; color: rgba(255, 255, 255, 0.72); }
+.ba-sub-retired { font-size: 10.5px; color: rgba(255, 255, 255, 0.72); }
 
 /* ========================================================================== */
 /*  Market switcher                                                           */
@@ -1975,3 +1961,39 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   }
   .money-btn { min-width: 132px; }
 }
+
+/* ------------------------------------------------- pinned bar: both sides */
+/* A five-second expiry is decided by what the chart is doing when you tap, so
+   the two sides live here, in reach of it. The scanner moved down to the panel
+   because it reads the numbers itself and never needs to see the candle. */
+.bar-sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.bar-side {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 48px;
+  border-radius: 13px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #fff;
+  transition: transform 0.12s var(--ease), box-shadow 0.18s var(--ease), filter 0.18s var(--ease);
+}
+.bar-side:active { transform: scale(0.98); }
+.bar-side:disabled { opacity: 0.45; }
+.bar-side.buy {
+  background: linear-gradient(180deg, #12c07f 0%, var(--up) 60%, #00875a 100%);
+  box-shadow: 0 6px 16px -7px rgba(0, 168, 112, 0.75), inset 0 1px 0 rgba(255,255,255,0.25);
+}
+.bar-side.sell {
+  background: linear-gradient(180deg, #f2566a 0%, var(--down) 60%, #c22133 100%);
+  box-shadow: 0 6px 16px -7px rgba(229, 56, 74, 0.75), inset 0 1px 0 rgba(255,255,255,0.25);
+}
+.bar-side:not(:disabled):hover { filter: brightness(1.04); }

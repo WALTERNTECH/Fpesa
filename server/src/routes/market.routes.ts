@@ -154,6 +154,106 @@ marketRouter.get('/scan', (req, res) => {
   });
 });
 
+/**
+ * Every market against every duration, as measured right now.
+ *
+ * This is the operator's version of what the scanner runs before a batch, with
+ * the whole grid rather than one row of it: the volatility each instrument has
+ * actually shown over the last minute, and from it the chance a position of
+ * each length is stopped out before it expires.
+ *
+ * What it reports is where risk currently sits, not where price is going. On a
+ * driftless series those are different questions and only the first has an
+ * answer — realised volatility wanders around its design figure minute to
+ * minute, so one market genuinely is a calmer place to stand than another, but
+ * nothing about that says which way the next tick falls.
+ */
+marketRouter.get('/conditions', (_req, res) => {
+  const durations = [...ALLOWED_DURATIONS];
+
+  // One scan per duration, not one per cell — the volatility figures inside a
+  // scan are the same for every duration, only the barrier moves.
+  const byDuration = durations.map((durationSec) => ({
+    durationSec,
+    rows: priceFeed.scan(durationSec, (symbol) => multiplierFor(durationSec, symbol)),
+  }));
+
+  const shortest = byDuration[0]!;
+  const markets = shortest.rows.map((base) => {
+    const grid: Record<string, {
+      multiplier: number;
+      stopOutOdds: number | null;
+      expectedMovePct: number | null;
+      barrierPct: number;
+      barrierSigma: number | null;
+    }> = {};
+
+    for (const { durationSec, rows } of byDuration) {
+      const row = rows.find((r) => r.symbol === base.symbol);
+      const multiplier = multiplierFor(durationSec, base.symbol);
+      // How far price is expected to travel over the life of the position.
+      const travelPct =
+        row && row.realisedSigma !== null
+          ? row.realisedSigma * Math.sqrt(durationSec) * 100
+          : null;
+      // How far it must travel against the position to wipe the stake out.
+      const barrierPct = (1 / multiplier) * 100;
+
+      grid[String(durationSec)] = {
+        multiplier,
+        stopOutOdds: row?.stopOutOdds ?? null,
+        expectedMovePct: travelPct === null ? null : Number(travelPct.toFixed(4)),
+        barrierPct: Number(barrierPct.toFixed(4)),
+        /**
+         * The barrier expressed in standard deviations of the move expected
+         * over this duration — the one figure on the board that is comparable
+         * across every market and every length. The multiplier ladder is built
+         * to hold it near 2.5 everywhere; anything below that is a cell priced
+         * looser than intended, anything above is tighter.
+         */
+        barrierSigma:
+          travelPct === null || travelPct === 0
+            ? null
+            : Number((barrierPct / travelPct).toFixed(3)),
+      };
+    }
+
+    return {
+      symbol: base.symbol,
+      name: base.name,
+      volatility: base.volatility,
+      designSigma: base.designSigma,
+      realisedSigma: base.realisedSigma,
+      /** Above 1 the market is livelier than designed, below 1 calmer. */
+      relative: base.relative,
+      samples: base.samples,
+      durations: grid,
+    };
+  });
+
+  // The calmest cell on the board at this moment. Null while the feed is still
+  // gathering samples, rather than a market winning by default on a null.
+  let best: { symbol: string; durationSec: number; stopOutOdds: number } | null = null;
+  for (const m of markets) {
+    for (const durationSec of durations) {
+      const odds = m.durations[String(durationSec)]?.stopOutOdds;
+      if (odds === null || odds === undefined) continue;
+      if (!best || odds < best.stopOutOdds) {
+        best = { symbol: m.symbol, durationSec, stopOutOdds: odds };
+      }
+    }
+  }
+
+  res.json({
+    ts: Date.now(),
+    durations,
+    markets,
+    best,
+    houseEdge: env.houseEdge,
+    maxProfitMultiple: env.maxProfitMultiple,
+  });
+});
+
 marketRouter.get('/news', async (_req, res) => {
   const items = await getNews();
   res.json({ items });

@@ -354,3 +354,85 @@ h2 .close {
 @media (min-width: 720px) {
   .acct-list { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 }
+
+/* ------------------------------------------------------- conditions board */
+.cond-best {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px 13px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.cond-best .stat-v { font-size: 16px; }
+
+.cond-note, .cond-legend {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--subtle);
+  margin: 10px 2px 0;
+}
+.cond-legend b { color: var(--ink, #0a0d14); font-weight: 700; }
+
+/* Six columns will not fit a phone. Rather than shrinking the type to
+   illegibility the grid scrolls, with the market column pinned so a row stays
+   identifiable once it has scrolled. */
+.cond-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.cond-grid { min-width: 460px; }
+.cond-grid th, .cond-grid td { padding: 8px 6px; text-align: center; }
+.cond-grid thead th {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.cond-grid tbody th[scope='row'] {
+  text-align: left;
+  position: sticky;
+  left: 0;
+  background: var(--white);
+  padding-right: 10px;
+}
+.cg-sym { display: block; font-size: 12.5px; font-weight: 700; }
+.cg-vol { display: block; font-size: 10.5px; color: var(--subtle); }
+
+/* The bar sits behind the number rather than beside it — the column is too
+   narrow to carry both, and the number is what gets read. */
+.cg-cell { position: relative; font-size: 12.5px; font-weight: 600; }
+.cg-cell > span { position: relative; }
+.cg-fill {
+  position: absolute;
+  left: 3px; right: 3px; bottom: 4px;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--up, #00a870), #e5384a);
+  background-size: 460px 100%;
+  opacity: 0.55;
+}
+.cg-cell.pick {
+  background: rgba(0, 168, 112, 0.1);
+  border-radius: 8px;
+  color: var(--up, #00a870);
+  font-weight: 800;
+}
+
+.cg-sigma { font-size: 12px; white-space: nowrap; }
+.cg-sigma b { display: block; }
+.cg-sigma span { font-size: 10.5px; font-weight: 600; }
+.cg-sigma .up { color: var(--up, #00a870); }
+.cg-sigma .down { color: var(--down, #e5384a); }
+
+@media (max-width: 520px) {
+  .cond-best { grid-template-columns: 1fr; }
+}
+
+/* The ladder is a design check, not a live reading — quieter than the grid. */
+.cond-ladder { margin-top: 14px; }
+.cond-ladder .cg-cell { font-weight: 700; }
+.cond-ladder .cg-cell.loose {
+  background: rgba(255, 176, 32, 0.16);
+  border-radius: 8px;
+  color: #8a5a00;
+}

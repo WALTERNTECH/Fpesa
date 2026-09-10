@@ -421,6 +421,36 @@ adminRouter.post('/float', async (req, res) => {
   });
 });
 
+/**
+ * Market conditions, for the operator.
+ *
+ * The console runs no price engine of its own — starting one would generate a
+ * second, different market — so this comes from the trading service, the same
+ * way the instrument view does.
+ *
+ * It answers "where is risk lowest right now", which is a real question with a
+ * real answer. It does not answer "which way will it go": nothing can, on a
+ * series with no drift, and an endpoint that claimed to would put the operator
+ * on the other side of information customers are staking money against.
+ */
+adminRouter.get('/conditions', async (_req, res) => {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const upstream = await fetch(env.upstreamUrl + '/api/market/conditions', {
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    if (!upstream.ok) {
+      res.status(502).json({ error: 'UPSTREAM', message: 'Could not read market conditions.' });
+      return;
+    }
+    res.json(await upstream.json());
+  } catch {
+    res.status(502).json({ error: 'UPSTREAM', message: 'Could not reach the trading service.' });
+  }
+});
+
 // ------------------------------------------------------------ user accounts
 
 /**

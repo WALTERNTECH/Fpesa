@@ -42,6 +42,28 @@ type Overview = {
   upstream?: { ok: boolean; url: string };
 };
 
+type Cell = {
+  multiplier: number;
+  stopOutOdds: number | null;
+  expectedMovePct: number | null;
+  barrierPct: number;
+  barrierSigma: number | null;
+};
+
+type Conditions = {
+  ts: number;
+  durations: number[];
+  markets: Array<{
+    symbol: string; name: string; volatility: number;
+    designSigma: number; realisedSigma: number | null; relative: number | null;
+    samples: number;
+    durations: Record<string, Cell>;
+  }>;
+  best: { symbol: string; durationSec: number; stopOutOdds: number } | null;
+  houseEdge: number;
+  maxProfitMultiple: number;
+};
+
 /* --------------------------------------------------------------- helpers */
 const kes = new Intl.NumberFormat('en-KE', { maximumFractionDigits: 0 });
 const ksh = (n: number): string => 'KSh ' + kes.format(Number.isFinite(n) ? n : 0);
@@ -124,7 +146,7 @@ function Stat({ k, v, tone }: { k: string; v: string; tone?: 'up' | 'down' }): J
 }
 
 function Dashboard({ onOut }: { onOut: () => void }): JSX.Element {
-  const [tab, setTab] = useState<'book' | 'accounts'>('book');
+  const [tab, setTab] = useState<'book' | 'conditions' | 'accounts'>('book');
   const [d, setD] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [at, setAt] = useState<Date | null>(null);
@@ -175,10 +197,14 @@ function Dashboard({ onOut }: { onOut: () => void }): JSX.Element {
       <main className="wrap">
         <nav className="tabs">
           <button aria-pressed={tab === 'book'} onClick={() => setTab('book')}>The book</button>
+          <button aria-pressed={tab === 'conditions'} onClick={() => setTab('conditions')}>
+            Conditions
+          </button>
           <button aria-pressed={tab === 'accounts'} onClick={() => setTab('accounts')}>Accounts</button>
         </nav>
 
         {tab === 'accounts' && <Accounts />}
+        {tab === 'conditions' && <ConditionsBoard />}
 
         {tab === 'book' && error && <div className="err">{error}</div>}
         {tab === 'book' && !d && !error && <div className="muted">Loading…</div>}
@@ -779,6 +805,261 @@ function StatementEditor({ user, statement, onDone }: {
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * Where risk sits right now, across every market and every duration.
+ *
+ * Each instrument is *designed* to put its stop-out the same distance away —
+ * multipliers are scaled by volatility precisely so that a 10s position is
+ * about as survivable on V100 as on V10. On paper the five are interchangeable.
+ *
+ * Realised volatility does not sit still on its design figure, though. Over any
+ * given minute one market runs hot and another runs quiet, while the barrier
+ * stays where it is. That gap is what this board measures: how lively each
+ * market has actually been over the last minute, and from it the chance a
+ * position of each length is stopped out before it expires.
+ *
+ * So it says where the calmest place to stand is, which is a real and checkable
+ * fact about the present. It says nothing about direction, because there is
+ * nothing to say — the series is driftless and every tick is an independent
+ * draw, so no reading of the past shifts the odds on the next one. A position
+ * opened in the calmest cell is still a coin flip on side. What changes is how
+ * likely it is to reach expiry at all rather than being stopped out on the way.
+ */
+function ConditionsBoard(): JSX.Element {
+  const [c, setC] = useState<Conditions | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setC(await call<Conditions>('/admin/conditions'));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load conditions.');
+    }
+  }, []);
+
+  // Volatility is measured over a rolling minute, so polling faster than this
+  // would only redraw the same figure.
+  useEffect(() => {
+    void load();
+    const id = window.setInterval(() => void load(), 5000);
+    return () => window.clearInterval(id);
+  }, [load]);
+
+  if (error) return <div className="err">{error}</div>;
+  if (!c) return <div className="muted">Measuring…</div>;
+
+  // Every stop-out figure on the board, so cells can be shaded against the
+  // riskiest one currently showing rather than a fixed scale that sits flat.
+  const all = c.markets.flatMap((m) =>
+    c.durations
+      .map((d) => m.durations[String(d)]?.stopOutOdds)
+      .filter((v): v is number => typeof v === 'number')
+  );
+  const worst = all.length ? Math.max(...all) : 0;
+  const warming = c.markets.filter((m) => m.realisedSigma === null);
+
+  // Barrier distance averaged across markets, one figure per duration. The
+  // ladder is supposed to hold this flat at 2.5σ; where it sags is where the
+  // house is giving away more room than it meant to.
+  const barrierByDuration = c.durations.map((durationSec) => {
+    const vals = c.markets
+      .map((m) => m.durations[String(durationSec)]?.barrierSigma)
+      .filter((v): v is number => typeof v === 'number');
+    return {
+      durationSec,
+      sigma: vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null,
+    };
+  });
+  const ladder = barrierByDuration
+    .map((b) => b.sigma)
+    .filter((v): v is number => v !== null);
+  const loosest = ladder.length ? Math.max(...ladder) : null;
+
+  return (
+    <>
+      <section>
+        <h2>Conditions now</h2>
+
+        {c.best ? (
+          <div className="cond-best">
+            <div>
+              <div className="stat-k">Calmest right now</div>
+              <div className="stat-v">
+                {c.best.symbol} · {c.best.durationSec}s
+              </div>
+            </div>
+            <div>
+              <div className="stat-k">Stop-out chance</div>
+              <div className="stat-v up">{(c.best.stopOutOdds * 100).toFixed(1)}%</div>
+            </div>
+            <div>
+              <div className="stat-k">Spread paid to open</div>
+              <div className="stat-v">{(c.houseEdge * 100).toFixed(1)}%</div>
+            </div>
+          </div>
+        ) : (
+          <div className="muted">Not enough ticks yet — the feed needs about a minute.</div>
+        )}
+
+        {/* Said plainly and kept on screen, because a board of green and red
+            cells invites being read as a forecast, which it is not. */}
+        <p className="cond-note">
+          These are survival odds, not direction. The calmest cell is the one
+          least likely to stop out before expiry — whether price then goes up or
+          down is an even chance in every cell on this board, and the spread is
+          charged either way.
+        </p>
+      </section>
+
+      <section>
+        <h2>Stop-out chance by market and duration</h2>
+        <div className="cond-scroll">
+          <table className="cond-grid">
+            <thead>
+              <tr>
+                <th>Market</th>
+                {c.durations.map((d) => <th key={d}>{d}s</th>)}
+                <th>Volatility</th>
+              </tr>
+            </thead>
+            <tbody>
+              {c.markets.map((m) => (
+                <tr key={m.symbol}>
+                  <th scope="row">
+                    <span className="cg-sym">{m.symbol}</span>
+                    <span className="cg-vol">V{m.volatility}</span>
+                  </th>
+                  {c.durations.map((d) => {
+                    const cell = m.durations[String(d)];
+                    const odds = cell?.stopOutOdds ?? null;
+                    const isBest =
+                      c.best !== null &&
+                      c.best.symbol === m.symbol &&
+                      c.best.durationSec === d;
+                    return (
+                      <td
+                        key={d}
+                        className={'cg-cell' + (isBest ? ' pick' : '')}
+                        title={
+                          cell
+                            ? '×' + cell.multiplier +
+                              ' · barrier ' + cell.barrierPct.toFixed(3) + '%' +
+                              ' · expected move ' +
+                              (cell.expectedMovePct === null
+                                ? 'n/a'
+                                : cell.expectedMovePct.toFixed(3) + '%') +
+                              (cell.barrierSigma === null
+                                ? ''
+                                : ' · barrier at ' + cell.barrierSigma.toFixed(2) + '\u03c3')
+                            : undefined
+                        }
+                      >
+                        {odds === null ? (
+                          <span className="muted">&mdash;</span>
+                        ) : (
+                          <>
+                            <i
+                              className="cg-fill"
+                              style={{ width: (worst > 0 ? (odds / worst) * 100 : 0) + '%' }}
+                              aria-hidden="true"
+                            />
+                            <span>{(odds * 100).toFixed(1)}%</span>
+                          </>
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td className="cg-sigma">
+                    {m.relative === null || m.realisedSigma === null ? (
+                      <span className="muted">warming</span>
+                    ) : (
+                      <>
+                        {/* The multiple is the headline because the raw figure
+                            is a per-root-second sigma — a number with four
+                            leading zeros, which reads as nothing at a glance.
+                            Against design it reads as "10% livelier than it
+                            should be", which is the actionable form. */}
+                        <b className={m.relative > 1 ? 'down' : 'up'}>
+                          {m.relative > 1 ? '\u2191' : '\u2193'} {m.relative.toFixed(2)}&times;
+                        </b>
+                        <span>
+                          {(m.realisedSigma * Math.sqrt(60) * 100).toFixed(4)}%/min
+                        </span>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Averaged down the columns rather than across the rows, because this
+            asks a different question from the grid above: not "which market is
+            calm right now" but "which duration is priced loosest" — a property
+            of the multiplier ladder, which does not move minute to minute. A
+            cell below the target is one where the stake survives more often
+            than the ladder intends. */}
+        {barrierByDuration.some((b) => b.sigma !== null) && (
+          <div className="cond-scroll">
+            <table className="cond-grid cond-ladder">
+              <thead>
+                <tr>
+                  <th>Barrier distance</th>
+                  {c.durations.map((d) => <th key={d}>{d}s</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">
+                    <span className="cg-sym">Mean</span>
+                    <span className="cg-vol">target 2.50&#963;</span>
+                  </th>
+                  {barrierByDuration.map(({ durationSec, sigma }) => (
+                    <td
+                      key={durationSec}
+                      className={
+                        'cg-cell' +
+                        (sigma !== null && sigma === loosest ? ' loose' : '')
+                      }
+                    >
+                      {sigma === null ? <span className="muted">&mdash;</span>
+                        : <span>{sigma.toFixed(2)}&#963;</span>}
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <p className="cond-legend">
+          Bars are relative to the riskiest cell showing. Hover a cell for its
+          barrier, the move expected over that duration, and the multiplier.
+          <b> Realised &#963;</b> is measured over the last minute; the arrow
+          compares it with the volatility the market is designed for, so up means
+          it is running livelier than usual and every duration on that row is
+          riskier than its design figure.
+          {warming.length > 0 && ' ' + warming.map((m) => m.symbol).join(', ') +
+            (warming.length === 1 ? ' is' : ' are') + ' still gathering ticks.'}
+        </p>
+
+        <p className="cond-legend">
+          <b>Barrier distance</b> is how far the stop-out sits from the opening
+          price, measured in standard deviations of the move expected over that
+          duration. It is the one figure comparable across every market and
+          length, and the multiplier ladder is built to hold it at 2.50&#963;
+          everywhere. The highlighted column is the loosest duration currently
+          on offer — the one where a stake survives to expiry most often. That is
+          a property of the ladder, not of today&rsquo;s prices, so it barely
+          moves; if it drifts far from target, the multipliers want re-cutting.
+        </p>
+      </section>
+    </>
   );
 }
 

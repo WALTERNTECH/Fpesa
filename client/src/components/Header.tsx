@@ -95,25 +95,6 @@ export function Header(): JSX.Element {
             </>
           ) : (
             <>
-              {/* Depositing is the one action that should never be behind a
-                  menu: a trader who cannot fund the account cannot do anything
-                  else either. It sits beside the balance, in the header, on
-                  every screen. */}
-              <button
-                className="btn btn-deposit btn-sm"
-                onClick={() => openModal('deposit')}
-              >
-                <IconArrowDown size={15} />
-                <span>Deposit</span>
-              </button>
-              <button
-                className="btn btn-withdraw btn-sm"
-                onClick={() => openModal('withdraw')}
-              >
-                <IconArrowUp size={15} />
-                <span>Withdraw</span>
-              </button>
-
               <div className="pos-rel" ref={menuRef}>
               <button
                 className="acct-btn"
@@ -210,6 +191,22 @@ export function Header(): JSX.Element {
           )}
         </div>
       </div>
+
+      {/* Funding is the one action that should never be behind a menu: a trader
+          who cannot fund the account cannot do anything else either. Its own
+          row, so both labels fit at any width. */}
+      {user && (
+        <div className="header-money">
+          <button className="money-btn deposit" onClick={() => openModal('deposit')}>
+            <IconArrowDown size={16} />
+            Deposit
+          </button>
+          <button className="money-btn withdraw" onClick={() => openModal('withdraw')}>
+            <IconArrowUp size={16} />
+            Withdraw
+          </button>
+        </div>
+      )}
     </header>
   );
 }

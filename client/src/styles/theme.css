@@ -1756,19 +1756,6 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .empty-state { display: grid; gap: 12px; justify-items: center; padding: 26px 14px; text-align: center; }
 .empty-state p { font-size: 13.5px; color: var(--muted); max-width: 34ch; }
 
-/* Deposit sits in the header beside the balance, so it needs to survive the
-   narrowest phone without pushing the account button off-screen. */
-.btn-deposit {
-  gap: 5px;
-  color: var(--blue);
-  background: var(--blue-soft);
-  border: 1px solid var(--blue-soft-2);
-  font-weight: 650;
-}
-.btn-deposit:hover { background: var(--blue-soft-2); }
-
-/* The labels stay. An arrow on its own is a guess — and these two arrows point
-   opposite ways on the same money, which is the worst case for guessing. */
 
 @media (min-width: 700px) {
   .hist-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -1920,52 +1907,71 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 }
 .fx-line b { font-size: 13.5px; color: var(--ink); font-weight: 700; }
 
-/* Withdraw sits beside Deposit in the header. Quieter than deposit — money
-   leaving should never be the most eye-catching thing on the screen. */
-.btn-withdraw {
-  gap: 5px;
-  color: var(--ink-2);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  font-weight: 600;
-}
-.btn-withdraw:hover { background: var(--surface-sunk); }
 
+/* ========================================================================== */
+/*  Header money row                                                          */
+/* ========================================================================== */
 
-
-/* ------------------------------------------------- header money actions */
-/* Below this the brand, both money buttons and the account chip cannot share
-   one line without the buttons losing their labels. They keep the labels and
-   take a row of their own instead: full width, evenly split, unmistakable. */
-@media (max-width: 640px) {
-  .header-inner {
-    flex-wrap: wrap;
-    height: auto;
-    padding-top: 8px;
-    padding-bottom: 8px;
-    row-gap: 8px;
-  }
-  .header-actions { width: 100%; margin-left: 0; }
-
-  /* The account chip stays on the top row with the brand. */
-  .header-actions > .pos-rel {
-    order: -1;
-    margin-left: auto;
-    margin-bottom: 2px;
-  }
-  .header-actions { flex-wrap: wrap; }
-  .header-actions > .pos-rel { width: 100%; display: flex; justify-content: flex-end; }
-
-  .btn-deposit,
-  .btn-withdraw {
-    flex: 1 1 0;
-    min-height: 40px;
-    justify-content: center;
-    font-size: 14px;
-  }
+/* Deposit and Withdraw get a row of their own directly beneath the brand and
+   the balance. They were competing for the same flex line as both of those,
+   which on a phone wrapped into three ragged rows with the balance stranded on
+   one by itself. A row is what this is; saying so is simpler than coaxing it
+   out of flex-wrap, and it means both labels fit at every width. */
+.header-money {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 0 calc(var(--gutter) + var(--safe-l)) 10px calc(var(--gutter) + var(--safe-r));
 }
 
-/* Logged out there is nothing to lay out — keep the original single row. */
-@media (max-width: 640px) {
-  .header-actions:not(:has(.btn-deposit)) { width: auto; margin-left: auto; }
+.money-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 46px;
+  border-radius: 13px;
+  font-size: 14.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  transition: transform 0.12s var(--ease), box-shadow 0.18s var(--ease),
+              background 0.18s var(--ease);
+}
+.money-btn:active { transform: scale(0.985); }
+.money-btn svg { flex-shrink: 0; }
+
+/* Funding is the action the product depends on, so it carries the weight. */
+.money-btn.deposit {
+  color: #fff;
+  background: linear-gradient(180deg, #1a63f0 0%, var(--blue) 55%, var(--blue-press) 100%);
+  border: 1px solid var(--blue-press);
+  box-shadow: 0 6px 16px -6px rgba(11, 79, 216, 0.55),
+              inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.money-btn.deposit:hover {
+  box-shadow: 0 8px 20px -6px rgba(11, 79, 216, 0.6),
+              inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+/* Taking money out is deliberately the quieter of the two. */
+.money-btn.withdraw {
+  color: var(--ink);
+  background: var(--white);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-sm);
+}
+.money-btn.withdraw:hover {
+  background: var(--surface-sunk);
+  border-color: var(--ink-2);
+}
+
+/* On a wide screen the pair does not need the full width — it sits with the
+   account chip it belongs to. */
+@media (min-width: 720px) {
+  .header-money {
+    grid-template-columns: auto auto;
+    justify-content: flex-end;
+    padding-bottom: 12px;
+  }
+  .money-btn { min-width: 132px; }
 }

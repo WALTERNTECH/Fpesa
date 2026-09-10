@@ -37,11 +37,15 @@
     <title>Fpesa — Volatility Index Trading in Kenya, M-Pesa Deposits</title>
 
     <link rel="manifest" href="/manifest.webmanifest" />
-    <!-- Browsers and crawlers request /favicon.ico by name whatever these say,
-         so it exists as a real file rather than falling through to the app
-         shell and rendering as a broken icon. -->
+    <!-- Browsers request /favicon.ico by name whatever these say, so it is a
+         real file holding 16/32/48/64px. One oversized image is worse than
+         none: a browser asked for 16 will skip an entry it would have to
+         downscale from 192, which is how a tab ends up showing a blank circle.
+         Google reads the 48 and wants that size or a multiple of it. -->
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="mask-icon" href="/favicon.svg" color="#0B4FD8" />
 

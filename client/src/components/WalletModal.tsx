@@ -125,17 +125,29 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
     }
   };
 
+  /**
+   * What M-Pesa is actually charging, in shillings.
+   *
+   * `value` is what was typed, and on the deposit screen that is dollars — so
+   * showing it with a KSh label read "KSh 1.00" for a $1 deposit that really
+   * charges 129. Once the transaction exists its amount is authoritative,
+   * because the server converted at its own rate; before it comes back the
+   * quote is the best available.
+   */
+  const chargedKes = txn
+    ? txn.amount
+    : inUsd
+      ? Math.round(value * rate)
+      : value;
+
   const title = isDeposit ? 'Deposit via M-Pesa' : 'Withdraw to M-Pesa';
   const inlineError = error ?? validationError();
 
+  // No subtitle: the number field carries its own label, so a line restating
+  // where the prompt goes only pushed the amount box further down the screen.
   return (
     <Modal
       title={title}
-      subtitle={
-        isDeposit
-          ? 'The M-Pesa prompt goes to the number you choose below.'
-          : 'Paid straight to the M-Pesa number you choose below.'
-      }
       onClose={() => {
         stopPolling();
         closeModal();
@@ -282,8 +294,8 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
           </div>
           <p className="d">
             {isDeposit
-              ? 'Enter your M-Pesa PIN on the prompt to deposit ' + ksh(value) + '.'
-              : 'Transferring ' + ksh(value) + ' to ' + displayPhone(user?.phone ?? '') + '.'}
+              ? 'Enter your M-Pesa PIN on the prompt to deposit ' + ksh(chargedKes) + '.'
+              : 'Transferring ' + ksh(chargedKes) + ' to ' + displayPhone(phone || user?.phone || '') + '.'}
           </p>
           {txn && (
             <p className="form-note" style={{ marginTop: 16 }}>

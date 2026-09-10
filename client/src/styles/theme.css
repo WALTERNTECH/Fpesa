@@ -1767,10 +1767,8 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 }
 .btn-deposit:hover { background: var(--blue-soft-2); }
 
-@media (max-width: 400px) {
-  .btn-deposit span { display: none; }
-  .btn-deposit { padding: 0 9px; }
-}
+/* The labels stay. An arrow on its own is a guess — and these two arrows point
+   opposite ways on the same money, which is the worst case for guessing. */
 
 @media (min-width: 700px) {
   .hist-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -1933,7 +1931,41 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 }
 .btn-withdraw:hover { background: var(--surface-sunk); }
 
-@media (max-width: 520px) {
-  .btn-withdraw span { display: none; }
-  .btn-withdraw { padding: 0 9px; }
+
+
+/* ------------------------------------------------- header money actions */
+/* Below this the brand, both money buttons and the account chip cannot share
+   one line without the buttons losing their labels. They keep the labels and
+   take a row of their own instead: full width, evenly split, unmistakable. */
+@media (max-width: 640px) {
+  .header-inner {
+    flex-wrap: wrap;
+    height: auto;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    row-gap: 8px;
+  }
+  .header-actions { width: 100%; margin-left: 0; }
+
+  /* The account chip stays on the top row with the brand. */
+  .header-actions > .pos-rel {
+    order: -1;
+    margin-left: auto;
+    margin-bottom: 2px;
+  }
+  .header-actions { flex-wrap: wrap; }
+  .header-actions > .pos-rel { width: 100%; display: flex; justify-content: flex-end; }
+
+  .btn-deposit,
+  .btn-withdraw {
+    flex: 1 1 0;
+    min-height: 40px;
+    justify-content: center;
+    font-size: 14px;
+  }
+}
+
+/* Logged out there is nothing to lay out — keep the original single row. */
+@media (max-width: 640px) {
+  .header-actions:not(:has(.btn-deposit)) { width: auto; margin-left: auto; }
 }

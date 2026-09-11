@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { env } from '../env.js';
 import { ALLOWED_DURATIONS } from '../services/trading.js';
 import { sandboxBook, SandboxError } from '../services/sandbox.js';
+import { fetchEpochs, runReplay } from '../services/sandbox-replay.js';
 
 /**
  * The sandbox API.
@@ -167,6 +168,76 @@ sandboxRouter.get('/oracle', requireSandboxSession, (req, res) => {
   } catch (err) {
     fail(res, err);
   }
+});
+
+// ------------------------------------------------------------------ replay
+
+/**
+ * Closed epochs of the real market, available to replay.
+ *
+ * Read from the live platform's public fairness endpoint — the same one any
+ * trader can open — and every seed is re-hashed against the commitment that was
+ * published before its epoch opened, with failures dropped rather than served.
+ * Only closed epochs carry a seed; the running one does not, anywhere.
+ */
+sandboxRouter.get('/replay/epochs', requireSandboxSession, (req, res) => {
+  const symbol = pickSymbol(req.query.symbol);
+  if (!symbol) {
+    res.status(400).json({ error: 'UNKNOWN_MARKET', message: 'No such market.' });
+    return;
+  }
+  void fetchEpochs(symbol)
+    .then((r) => res.json(r))
+    .catch((err) => fail(res, err));
+});
+
+/**
+ * Re-runs one epoch, optionally under different parameters.
+ *
+ * Returns the epoch as it actually traded alongside the variant, both built from
+ * the same seed. Reusing the draws rather than redrawing them is what makes the
+ * comparison mean anything: whatever differs between the two runs was caused by
+ * the knob that moved.
+ */
+sandboxRouter.post('/replay', requireSandboxSession, (req, res) => {
+  const body = req.body as {
+    symbol?: unknown;
+    epoch?: unknown;
+    shock?: unknown;
+    houseEdge?: unknown;
+    maxProfitMultiple?: unknown;
+    multiplierScale?: unknown;
+    entryTick?: unknown;
+  };
+  const symbol = pickSymbol(body.symbol);
+  if (!symbol) {
+    res.status(400).json({ error: 'UNKNOWN_MARKET', message: 'No such market.' });
+    return;
+  }
+  const epoch = Number(body.epoch);
+  if (!Number.isFinite(epoch)) {
+    res.status(400).json({ error: 'VALIDATION', message: 'Choose an epoch to replay.' });
+    return;
+  }
+
+  const knob = (v: unknown): number | undefined => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+
+  void runReplay({
+    symbol,
+    epoch,
+    knobs: {
+      shock: knob(body.shock),
+      houseEdge: knob(body.houseEdge),
+      maxProfitMultiple: knob(body.maxProfitMultiple),
+      multiplierScale: knob(body.multiplierScale),
+      entryTick: knob(body.entryTick),
+    },
+  })
+    .then((r) => res.json(r))
+    .catch((err) => fail(res, err));
 });
 
 // ----------------------------------------------------------------- trading

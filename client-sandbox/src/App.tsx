@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { Replay } from './Replay';
 
 /* ---------------------------------------------------------------- types */
 type Play = {
@@ -247,6 +248,7 @@ export function App(): JSX.Element {
   const [duration, setDuration] = useState(10);
   const [busy, setBusy] = useState(false);
   const [seedOpen, setSeedOpen] = useState(false);
+  const [view, setView] = useState<'live' | 'replay'>('live');
 
   // Held in a ref so the polling effect does not restart on every tick.
   const symbolRef = useRef<string | null>(null);
@@ -273,9 +275,10 @@ export function App(): JSX.Element {
   }, []);
 
   // Two ticks a second. The market moves four times a second, so this is
-  // smooth enough to read without making a request per tick.
+  // smooth enough to read without making a request per tick. Paused on the
+  // replay view, which is studying a fixed epoch and has nothing to refresh.
   useEffect(() => {
-    if (!authed) return;
+    if (!authed || view !== 'live') return;
     let alive = true;
     const run = (): void => {
       void Promise.all([loadOracle(), loadState()])
@@ -288,7 +291,13 @@ export function App(): JSX.Element {
       alive = false;
       window.clearInterval(id);
     };
-  }, [authed, loadOracle, loadState]);
+  }, [authed, view, loadOracle, loadState]);
+
+  // Replay needs the instrument list too, and on that view the poll above is
+  // switched off, so fetch it once on arrival.
+  useEffect(() => {
+    if (authed && view === 'replay' && !state) void loadState().catch(() => undefined);
+  }, [authed, view, state, loadState]);
 
   const trade = (direction: 'BUY' | 'SELL'): void => {
     if (!symbol) return;
@@ -347,6 +356,15 @@ export function App(): JSX.Element {
       </header>
 
       <main className="wrap">
+        <nav className="views">
+          <button aria-pressed={view === 'live'} onClick={() => setView('live')}>
+            Live sandbox
+          </button>
+          <button aria-pressed={view === 'replay'} onClick={() => setView('replay')}>
+            Replay
+          </button>
+        </nav>
+
         {error && <div className="err">{error}</div>}
 
         <nav className="markets">
@@ -364,7 +382,9 @@ export function App(): JSX.Element {
           ))}
         </nav>
 
-        {oracle && (
+        {view === 'replay' && <Replay symbol={symbol} />}
+
+        {view === 'live' && oracle && (
           <>
             <section className="headline">
               <div>
@@ -517,7 +537,7 @@ export function App(): JSX.Element {
           </>
         )}
 
-        {state && (state.open.length > 0 || state.closed.length > 0) && (
+        {view === 'live' && state && (state.open.length > 0 || state.closed.length > 0) && (
           <section className="grid-sec">
             <h2>
               Your positions

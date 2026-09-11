@@ -345,3 +345,89 @@ table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-
   .best-v { justify-content: flex-start; }
   .sides { grid-template-columns: 1fr; }
 }
+
+/* ---------------------------------------------------------------- views */
+.views { display: flex; gap: 8px; }
+.views button {
+  border: 1px solid var(--line);
+  background: var(--white);
+  border-radius: 10px;
+  min-height: 38px;
+  padding: 0 16px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.views button[aria-pressed='true'] {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #fff;
+}
+
+/* --------------------------------------------------------------- replay */
+.replay-pick { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.replay-pick label { display: grid; gap: 5px; }
+.replay-pick .k { font-size: 11.5px; color: var(--subtle); }
+.replay-pick select {
+  min-height: 40px;
+  min-width: 300px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0 10px;
+  font: inherit;
+  background: #fbfaff;
+}
+
+.verified { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; }
+.seedline {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #faf8ff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.knobs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.knobs label { display: grid; gap: 4px; align-content: start; }
+.knobs label.wide { grid-column: 1 / -1; }
+.knobs .k { font-size: 11.5px; color: var(--subtle); }
+.knobs small { font-size: 10.5px; color: var(--subtle); }
+.knobs input[type='number'] {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0 10px;
+  font: inherit;
+  background: #fbfaff;
+  width: 100%;
+}
+.knobs input[type='range'] { width: 100%; accent-color: var(--brand); }
+
+/* The amplified run sits behind the real one, so the real path stays the
+   thing being read and the variant is context around it. */
+.line-variant {
+  fill: none;
+  stroke: #e0a800;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.85;
+}
+.worst-line { stroke: var(--down); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.sw-variant { border-color: #e0a800; }
+.sw-now { border-color: var(--ink); border-top-style: dashed; }
+.sw-worst { border-color: var(--down); border-top-style: dashed; }
+
+.cmp { min-width: 480px; }
+.cmp th[scope='row'] { text-align: left; font-weight: 600; }
+.cmp th[scope='row'] small { display: block; font-weight: 400; color: var(--subtle); font-size: 10.5px; }
+.cmp td small { display: block; color: var(--subtle); font-size: 10.5px; font-weight: 400; }
+.cmp td.moved { background: #fff8e5; font-weight: 700; }
+.worst-row td { font-weight: 700; }
+.worst-row th, .worst-row td { border-top: 2px solid var(--line) !important; padding-top: 10px; }
+.reason .was { color: var(--subtle); font-size: 10.5px; }
+code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; }

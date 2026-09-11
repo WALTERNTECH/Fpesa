@@ -270,6 +270,15 @@ export const env = {
     startingBalance: num('SANDBOX_STARTING_BALANCE', 100000),
     /** How far ahead the oracle looks. 240 ticks at 250ms is the 60s duration. */
     oracleTicks: num('SANDBOX_ORACLE_TICKS', 260),
+    /**
+     * Where replay reads closed epochs of the real market from.
+     *
+     * It calls that host's public /api/fairness, which is the same URL any
+     * trader can open and which carries seeds only for epochs that have already
+     * ended. No credential is involved and none would help: the running epoch's
+     * seed is not published to anyone.
+     */
+    replaySource: str('SANDBOX_REPLAY_SOURCE', 'https://www.fpesa.markets').replace(/\/+$/, ''),
   },
 };
 

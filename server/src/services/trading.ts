@@ -130,9 +130,16 @@ export function applySpread(
   mid: number,
   direction: 'BUY' | 'SELL',
   multiplier: number,
-  precision = 2
+  precision = 2,
+  /**
+   * Overridable only so the sandbox's replay can ask "what would this epoch have
+   * cost the book at a different edge" without restating the formula somewhere
+   * it could quietly drift out of step. Every caller on the live path leaves it
+   * alone and gets env.houseEdge, exactly as before.
+   */
+  edge: number = env.houseEdge
 ): number {
-  const offset = env.houseEdge / multiplier;
+  const offset = edge / multiplier;
   const sign = direction === 'BUY' ? 1 : -1;
   return roundTo(mid * (1 + sign * offset), precision);
 }

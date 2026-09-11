@@ -6,6 +6,7 @@ import { ALLOWED_DURATIONS } from '../services/trading.js';
 import { sandboxBook, SandboxError } from '../services/sandbox.js';
 import { fetchEpochs, runReplay } from '../services/sandbox-replay.js';
 import { stressBook } from '../services/sandbox-book.js';
+import { conform } from '../services/sandbox-conform.js';
 
 /**
  * The sandbox API.
@@ -237,6 +238,37 @@ sandboxRouter.post('/replay', requireSandboxSession, (req, res) => {
       entryTick: knob(body.entryTick),
     },
   })
+    .then((r) => res.json(r))
+    .catch((err) => fail(res, err));
+});
+
+// ------------------------------------------------------------ conformance
+
+/**
+ * Does the sandbox quote the same contract production would?
+ *
+ * Takes production's live price and published parameters, prices the ticket
+ * through this service's own code, and diffs it against the margin figures
+ * production publishes for that same ticket. See services/sandbox-conform.ts
+ * for why this tests the thing a seed comparison could not.
+ */
+sandboxRouter.get('/conform', requireSandboxSession, (req, res) => {
+  const symbol = pickSymbol(req.query.symbol);
+  if (!symbol) {
+    res.status(400).json({ error: 'UNKNOWN_MARKET', message: 'No such market.' });
+    return;
+  }
+  const stake = Number(req.query.stake ?? 1000);
+  const durationSec = Number(req.query.durationSec ?? 10);
+  if (!Number.isFinite(stake) || stake <= 0) {
+    res.status(400).json({ error: 'VALIDATION', message: 'Enter a stake.' });
+    return;
+  }
+  if (!(ALLOWED_DURATIONS as readonly number[]).includes(durationSec)) {
+    res.status(400).json({ error: 'VALIDATION', message: 'Choose an offered duration.' });
+    return;
+  }
+  void conform({ symbol, stake, durationSec })
     .then((r) => res.json(r))
     .catch((err) => fail(res, err));
 });

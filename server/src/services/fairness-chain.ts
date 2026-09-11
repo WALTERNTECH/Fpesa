@@ -214,6 +214,15 @@ export type PublishedEpoch = {
   epochMs: number;
   sigma: number;
   drift: number;
+  /**
+   * Committed, its window long past, and still without a seed — so its ticks
+   * can never be checked. That happens when the process was killed hard enough
+   * to skip the shutdown reveal, taking the only copy of the seed with it.
+   *
+   * Marked rather than hidden. An epoch nobody can verify is a real weakness in
+   * the record and the record should say so out loud.
+   */
+  orphaned: boolean;
 };
 
 /**
@@ -248,20 +257,28 @@ export async function readChain(symbol: string, limit = 48): Promise<{
     return { epochs: [], head: null, readable: false, linksValid: null, brokenAt: null };
   }
 
-  const rows = ((data ?? []) as Row[]).map((r): PublishedEpoch => ({
-    epoch: Number(r.epoch),
-    startPrice: Number(r.start_price),
-    seedHash: r.seed_hash,
-    prevChainHash: r.prev_chain_hash,
-    chainHash: r.chain_hash,
-    startedAt: Date.parse(r.started_at),
-    endedAt: r.ended_at ? Date.parse(r.ended_at) : null,
-    seed: r.seed,
-    tickMs: r.tick_ms,
-    epochMs: r.epoch_ms,
-    sigma: Number(r.sigma),
-    drift: Number(r.drift),
-  }));
+  const now = Date.now();
+  const rows = ((data ?? []) as Row[]).map((r): PublishedEpoch => {
+    const startedAt = Date.parse(r.started_at);
+    const epochMs = r.epoch_ms;
+    return {
+      epoch: Number(r.epoch),
+      startPrice: Number(r.start_price),
+      seedHash: r.seed_hash,
+      prevChainHash: r.prev_chain_hash,
+      chainHash: r.chain_hash,
+      startedAt,
+      endedAt: r.ended_at ? Date.parse(r.ended_at) : null,
+      seed: r.seed,
+      tickMs: r.tick_ms,
+      epochMs,
+      sigma: Number(r.sigma),
+      drift: Number(r.drift),
+      // A minute of slack past the window, so the epoch that is currently
+      // running is never mistaken for one that was abandoned.
+      orphaned: r.seed === null && now > startedAt + epochMs + 60_000,
+    };
+  });
 
   let linksValid = true;
   let brokenAt: number | null = null;

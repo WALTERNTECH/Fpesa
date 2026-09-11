@@ -337,6 +337,16 @@ class PriceFeed {
     );
   }
 
+  /**
+   * Reveals every instrument's running seed because the process is stopping.
+   *
+   * Called from the shutdown handler before anything tears down, so a planned
+   * restart leaves no epoch committed but never revealed.
+   */
+  closeForShutdown(): void {
+    for (const feed of this.feeds.values()) feed.syntheticEngine()?.closeForShutdown();
+  }
+
   stop(): void {
     if (this.tickTimer) clearInterval(this.tickTimer);
     if (this.pollTimer) clearInterval(this.pollTimer);

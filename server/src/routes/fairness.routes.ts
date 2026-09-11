@@ -76,8 +76,14 @@ fairnessRouter.get('/', async (req, res) => {
     // come from memory, which meant a restart reset the epoch counter to 1 and
     // orphaned every epoch before it — a discarded epoch and a deploy looked
     // identical, which is the one thing a commitment scheme must not allow.
-    revealed: chain.epochs,
+    //
+    // Still closed epochs only, so the existing verifier's contract holds: a
+    // "revealed" list containing an epoch with no seed would be a contradiction.
+    // The full window, running epoch included, is under chain.epochs.
+    revealed: chain.epochs.filter((e) => e.seed !== null),
     chain: {
+      epochs: chain.epochs,
+      orphaned: chain.epochs.filter((e) => e.orphaned).map((e) => e.epoch),
       head: chain.head,
       // null means the record could not be read, which is an infrastructure
       // problem and not a tampering claim. Only false means the links broke.

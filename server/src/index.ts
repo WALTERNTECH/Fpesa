@@ -215,6 +215,10 @@ async function main(): Promise<void> {
 
   const shutdown = (signal: string): void => {
     console.log('[fpesa] ' + signal + ' received, shutting down');
+    // Publish the running epochs' seeds first. They are owed to anyone who
+    // traded in them, and a restart used to strand one per instrument as
+    // committed-but-never-revealed.
+    if (!isAdmin && !isSandbox) priceFeed.closeForShutdown();
     if (isSandbox) {
       sandboxBook.stop();
       shadowFeed.stop();

@@ -72,18 +72,23 @@ function chainHashOf(prev, e) {
 const res = await fetch(baseUrl + '/api/fairness?symbol=' + encodeURIComponent(symbol));
 if (!res.ok) {
   console.error('Could not read ' + baseUrl + '/api/fairness — HTTP ' + res.status);
-  process.exit(2);
+  process.exitCode = 2;
+  throw new Error('verification aborted');
 }
 const f = await res.json();
 if (!f.provablyFair) {
   console.error('This deployment is not running a seeded instrument.');
-  process.exit(2);
+  process.exitCode = 2;
+  throw new Error('verification aborted');
 }
 
-const epochs = [...(f.revealed ?? [])].sort((a, z) => a.epoch - z.epoch);
+// The full window including the epoch still running; falls back to the closed-only
+// list so this also works against a server predating the chain.
+const epochs = [...(f.chain?.epochs ?? f.revealed ?? [])].sort((a, z) => a.epoch - z.epoch);
 if (epochs.length === 0) {
   console.error('No epochs published yet.');
-  process.exit(2);
+  process.exitCode = 2;
+  throw new Error('verification aborted');
 }
 
 console.log('Fpesa fairness chain — ' + symbol + ' @ ' + baseUrl);
@@ -172,7 +177,10 @@ console.log('');
 if (failures === 0) {
   console.log('PASS. Record this head and check it again later:');
   console.log('  ' + (f.chain?.head?.chainHash ?? epochs[epochs.length - 1].chainHash));
-  process.exit(0);
+} else {
+  console.log('FAIL — ' + failures + ' problem(s). The published record does not hold together.');
 }
-console.log('FAIL — ' + failures + ' problem(s). The published record does not hold together.');
-process.exit(1);
+// Set rather than force-exit: an abrupt exit() while the fetch socket is still
+// closing trips a libuv assertion on Windows, which looks like the verifier
+// itself failed.
+process.exitCode = failures === 0 ? 0 : 1;

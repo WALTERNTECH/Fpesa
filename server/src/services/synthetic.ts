@@ -246,6 +246,30 @@ export class SyntheticEngine {
     };
   }
 
+  /**
+   * Publishes the running epoch's seed because the process is stopping.
+   *
+   * Safe precisely because it is shutting down: this epoch will not produce
+   * another tick, so it is over in every sense that matters and its seed is
+   * owed to whoever traded in it. Without this, every restart left one epoch
+   * per instrument committed but never revealed — permanently unverifiable, and
+   * indistinguishable at a glance from one deliberately withheld.
+   *
+   * A hard kill still skips it. Those epochs show up as orphaned in the chain
+   * rather than quietly absent, which is the best that can be done once the
+   * only copy of the seed has gone with the process.
+   */
+  closeForShutdown(): void {
+    if (!this.seed) return;
+    const endedAt = Date.now();
+    const current = this.history[this.history.length - 1];
+    if (current && current.epoch === this.epoch && current.seed === null) {
+      current.endedAt = endedAt;
+      current.seed = this.seed;
+    }
+    this.report(() => this.reporter?.reveal(this.epoch, this.seed, endedAt));
+  }
+
   /** Closed epochs only — the live seed is never included. */
   revealed(limit = 24): EpochRecord[] {
     return this.history.filter((e) => e.seed !== null).slice(-limit).reverse();

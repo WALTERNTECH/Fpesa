@@ -3,6 +3,7 @@ import { useApp } from '../store/app';
 import { usd, durationLabel } from '../lib/format';
 import { OpenPositions } from './OpenPositions';
 import { IconArrowDown, IconArrowUp } from './Icons';
+import { PassCard } from './PassCard';
 
 export function TradePanel(): JSX.Element {
   const {
@@ -182,6 +183,8 @@ export function TradePanel(): JSX.Element {
               })}
             </div>
           )}
+
+          <PassCard />
 
           {/* Reads every market's realised volatility, picks the one where
               this duration is least likely to stop out, and opens the batch

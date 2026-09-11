@@ -13,6 +13,13 @@ export type SessionUser = {
   isAdmin: boolean;
   turnoverRequired: number;
   turnoverProgress: number;
+  /**
+   * An active promo's reduced spread, carried on the session so the trade path
+   * can price without a second query. Null when none is running.
+   */
+  promoEdge: number | null;
+  promoUntil: string | null;
+  promoCode: string | null;
 };
 
 declare global {
@@ -56,6 +63,9 @@ type UserRow = {
   is_active: boolean;
   turnover_required: string | number;
   turnover_progress: string | number;
+  promo_edge?: string | number | null;
+  promo_until?: string | null;
+  promo_code?: string | null;
 };
 
 export function toSessionUser(row: UserRow): SessionUser {
@@ -68,13 +78,23 @@ export function toSessionUser(row: UserRow): SessionUser {
     isAdmin: row.is_admin,
     turnoverRequired: Number(row.turnover_required ?? 0),
     turnoverProgress: Number(row.turnover_progress ?? 0),
+    // Expired promos are dropped here rather than anywhere downstream, so no
+    // caller has to remember to check the clock before using the number.
+    promoEdge:
+      row.promo_until && Date.parse(row.promo_until) > Date.now() && row.promo_edge != null
+        ? Number(row.promo_edge)
+        : null,
+    promoUntil:
+      row.promo_until && Date.parse(row.promo_until) > Date.now() ? row.promo_until : null,
+    promoCode:
+      row.promo_until && Date.parse(row.promo_until) > Date.now() ? (row.promo_code ?? null) : null,
   };
 }
 
 async function loadUser(userId: string): Promise<SessionUser | null> {
   const { data, error } = await db
     .from('users')
-    .select('id, username, phone, demo_balance, real_balance, is_admin, is_active, turnover_required, turnover_progress')
+    .select('id, username, phone, demo_balance, real_balance, is_admin, is_active, turnover_required, turnover_progress, promo_edge, promo_until, promo_code')
     .eq('id', userId)
     .maybeSingle();
   if (error || !data) return null;

@@ -19,10 +19,15 @@ export function TradePanel(): JSX.Element {
   // The move that would wipe the stake out, shown as a percentage because the
   // absolute price level depends on which side the trader takes.
   const wipeoutMovePct = useMemo(() => (1 / multiplier) * 100, [multiplier]);
+  // The spread this trader actually pays: their promo rate while one is
+  // running, otherwise the platform's. Quoting the platform rate to someone on
+  // a promo would understate what they get and overstate what they are charged.
+  const effectiveEdge = user?.promoEdge ?? config.houseEdge;
+  const onPromo = user?.promoEdge != null && user.promoEdge < config.houseEdge;
   // What the spread costs on this ticket, stated up front. The ticket is in
   // dollars, so this and maxProfit above are already dollars.
   const spreadCost = Number.isFinite(stakeAmount)
-    ? stakeAmount * config.houseEdge
+    ? stakeAmount * effectiveEdge
     : 0;
 
   const quickAmounts = useMemo(() => {
@@ -159,10 +164,24 @@ export function TradePanel(): JSX.Element {
             <div className="term">
               <span className="k">Spread (cost to open)</span>
               <span className="v tnum">
-                {usd(spreadCost)} · {(config.houseEdge * 100).toFixed(1)}%
+                {onPromo && (
+                  <s className="was">{(config.houseEdge * 100).toFixed(1)}%</s>
+                )}
+                {usd(spreadCost)} · {(effectiveEdge * 100).toFixed(1)}%
               </span>
             </div>
           </div>
+
+          {onPromo && user?.promoUntil && (
+            <div className="promo-live">
+              <b>{user.promoCode}</b> active — you pay{' '}
+              {(effectiveEdge * 100).toFixed(1)}% instead of{' '}
+              {(config.houseEdge * 100).toFixed(1)}% until{' '}
+              {new Date(user.promoUntil).toLocaleString('en-KE', {
+                hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short',
+              })}
+            </div>
+          )}
 
           {/* Reads every market's realised volatility, picks the one where
               this duration is least likely to stop out, and opens the batch

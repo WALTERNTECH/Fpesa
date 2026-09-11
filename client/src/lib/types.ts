@@ -7,6 +7,10 @@ export type User = {
   isAdmin: boolean;
   turnoverRequired: number;
   turnoverProgress: number;
+  /** An active promo's reduced spread, or null. Already expired ones arrive null. */
+  promoEdge: number | null;
+  promoUntil: string | null;
+  promoCode: string | null;
 };
 
 export type AccountMode = 'demo' | 'real';

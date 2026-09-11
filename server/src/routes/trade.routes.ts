@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { db } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
+import { settings } from '../services/settings.js';
 import {
   ALLOWED_DURATIONS,
   TradeError,
@@ -15,6 +16,54 @@ import {
 } from '../services/trading.js';
 
 export const tradeRouter = Router();
+
+/**
+ * Redeems a promo code, which lowers this trader's spread for a window.
+ *
+ * The spread is the only honest lever on a win rate — 39% of positions win at
+ * 11%, 48% at 2%, exactly 50% at zero and nothing above it. So the response
+ * says what the code actually bought, in those terms, rather than leaving the
+ * trader to infer it from a percentage.
+ */
+tradeRouter.post('/promo', requireAuth, async (req, res) => {
+  const code = String((req.body as { code?: unknown }).code ?? '').trim();
+  if (code.length < 3 || code.length > 32) {
+    res.status(400).json({ error: 'VALIDATION', message: 'Enter your code.' });
+    return;
+  }
+
+  const { data, error } = await db.rpc('fpesa_redeem_promo', {
+    p_user: req.user!.id,
+    p_code: code,
+  });
+
+  if (error) {
+    const known: Record<string, string> = {
+      NO_SUCH_CODE: 'That code does not exist.',
+      CODE_INACTIVE: 'That code is no longer active.',
+      CODE_EXPIRED: 'That code has expired.',
+      CODE_EXHAUSTED: 'That code has been fully claimed.',
+      ALREADY_REDEEMED: 'You have already used that code.',
+    };
+    const hit = Object.keys(known).find((k) => error.message.includes(k));
+    if (hit) {
+      res.status(400).json({ error: hit, message: known[hit] });
+      return;
+    }
+    console.error('[promo] redeem failed:', error.message);
+    res.status(500).json({ error: 'PROMO_FAILED', message: 'Could not apply that code.' });
+    return;
+  }
+
+  const result = data as { code: string; edge: number; validUntil: string; hours: number };
+  res.json({
+    ok: true,
+    code: result.code,
+    edge: result.edge,
+    validUntil: result.validUntil,
+    normalEdge: settings.houseEdge(),
+  });
+});
 
 // A human cannot meaningfully place more than a couple of trades a second;
 // this stops a scripted client from hammering the settlement engine.
@@ -58,6 +107,9 @@ tradeRouter.post('/', requireAuth, placeLimiter, async (req, res) => {
       stake,
       durationSec: durationSec as Duration,
       symbol,
+      // Undefined when no promo is running, which falls through to the
+      // platform edge.
+      edge: req.user!.promoEdge ?? undefined,
     });
     res.status(201).json(result);
   } catch (err) {
@@ -102,6 +154,7 @@ tradeRouter.post('/run', requireAuth, placeLimiter, async (req, res) => {
       durationSec: durationSec as Duration,
       count,
       symbol,
+      edge: req.user!.promoEdge ?? undefined,
     });
     res.status(201).json(result);
   } catch (err) {

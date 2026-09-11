@@ -10,6 +10,28 @@ import { ALLOWED_DURATIONS, multiplierFor } from '../services/trading.js';
 
 export const adminRouter = Router();
 
+/**
+ * The share of positions that finish profitable at a given spread.
+ *
+ * Uses the normalCdf declared further down this file — declarations hoist, and
+ * one copy of an approximation is better than two that can drift.
+ *
+ * Quoted on the reference ticket — FPX100 over 10s — because a win rate has no
+ * meaning without saying on what. The shape is the same on every instrument,
+ * since the multipliers are scaled to hold the barrier at a constant number of
+ * standard deviations.
+ *
+ * It approaches 50% as the spread approaches zero and never passes it. That
+ * ceiling is not a tuning choice: the series is driftless and symmetric, so
+ * with no spread a position is a coin flip, and the gap below 50% is exactly
+ * the house's revenue.
+ */
+function winRateAt(edge: number): number {
+  const multiplier = multiplierFor(10, SYMBOL);
+  const sd = env.synth.sigma * Math.sqrt(10);
+  return 1 - normalCdf(edge / multiplier / sd);
+}
+
 adminRouter.use(requireAuth, (req, res, next) => {
   if (!req.user!.isAdmin) {
     res.status(403).json({ error: 'FORBIDDEN', message: 'Admins only.' });
@@ -553,6 +575,116 @@ adminRouter.post('/edge', async (req, res) => {
   await notifyEdgeChanged();
 
   res.json({ ok: true, previous: result.previous, edge: result.value });
+});
+
+/**
+ * Promo codes: a reduced spread, handed out, redeemed by a trader.
+ *
+ * What a code is really selling is a win rate, so the listing says so in those
+ * terms. At 11% a trader wins 39% of positions; at 2%, 48%; at zero, exactly
+ * 50% and not a fraction more. An operator choosing a number should see what it
+ * buys rather than work it out afterwards.
+ */
+adminRouter.get('/promos', async (_req, res) => {
+  const { data, error } = await db
+    .from('promo_codes')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) {
+    console.error('[admin] promo list failed:', error.message);
+    res.status(500).json({ error: 'LOAD_FAILED', message: 'Could not load promo codes.' });
+    return;
+  }
+
+  const rows = (data ?? []) as Array<Record<string, unknown>>;
+  res.json({
+    houseEdge: env.houseEdge,
+    codes: rows.map((r) => ({
+      code: r.code,
+      edge: Number(r.edge),
+      hours: r.hours,
+      maxRedemptions: r.max_redemptions === null ? null : Number(r.max_redemptions),
+      redemptions: Number(r.redemptions),
+      expiresAt: r.expires_at,
+      active: r.active,
+      note: r.note,
+      createdAt: r.created_at,
+      // The honest headline: what this code does to a 10s FPX100 ticket.
+      winRate: Number((winRateAt(Number(r.edge)) * 100).toFixed(1)),
+    })),
+  });
+});
+
+adminRouter.post('/promos', async (req, res) => {
+  const b = req.body as Record<string, unknown>;
+  const code = String(b.code ?? '').trim().toUpperCase();
+  const edge = Number(b.edge);
+  const hours = Number(b.hours);
+  const maxRedemptions = b.maxRedemptions === null || b.maxRedemptions === undefined
+    ? null : Number(b.maxRedemptions);
+  const note = String(b.note ?? '').trim() || null;
+
+  if (!/^[A-Z0-9_-]{3,32}$/.test(code)) {
+    res.status(400).json({
+      error: 'VALIDATION',
+      message: 'Code must be 3–32 characters: letters, digits, dash or underscore.',
+    });
+    return;
+  }
+  if (!Number.isFinite(edge) || edge < 0 || edge > 0.2) {
+    res.status(400).json({
+      error: 'VALIDATION',
+      message: 'The promo spread must be between 0% and 20%. Enter it as a fraction.',
+    });
+    return;
+  }
+  if (!Number.isFinite(hours) || hours < 1 || hours > 720) {
+    res.status(400).json({ error: 'VALIDATION', message: 'Hours must be between 1 and 720.' });
+    return;
+  }
+  if (maxRedemptions !== null && (!Number.isFinite(maxRedemptions) || maxRedemptions < 1)) {
+    res.status(400).json({ error: 'VALIDATION', message: 'Leave the limit blank or set at least 1.' });
+    return;
+  }
+
+  const { error } = await db.from('promo_codes').insert({
+    code,
+    edge,
+    hours,
+    max_redemptions: maxRedemptions,
+    note,
+    created_by: req.user!.id,
+  });
+
+  if (error) {
+    if (error.message.includes('duplicate key')) {
+      res.status(400).json({ error: 'DUPLICATE', message: 'That code already exists.' });
+      return;
+    }
+    console.error('[admin] promo create failed:', error.message);
+    res.status(500).json({ error: 'CREATE_FAILED', message: 'Could not create the code.' });
+    return;
+  }
+
+  console.log(
+    '[admin] ' + req.user!.username + ' created promo ' + code + ' at ' +
+    (edge * 100).toFixed(1) + '% for ' + hours + 'h'
+  );
+  res.status(201).json({ ok: true, code, edge, hours, winRate: winRateAt(edge) });
+});
+
+/** Turns a code off without deleting it, so redemptions already granted stand. */
+adminRouter.post('/promos/:code/disable', async (req, res) => {
+  const { error } = await db
+    .from('promo_codes')
+    .update({ active: false })
+    .eq('code', String(req.params.code).toUpperCase());
+  if (error) {
+    res.status(500).json({ error: 'UPDATE_FAILED', message: 'Could not disable the code.' });
+    return;
+  }
+  res.json({ ok: true });
 });
 
 // ------------------------------------------------------------ user accounts

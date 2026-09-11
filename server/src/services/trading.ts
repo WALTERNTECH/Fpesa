@@ -248,6 +248,26 @@ export function toPublicRun(row: RunRow): PublicRun {
  * flipped separately so a run is three independent positions rather than one
  * tripled bet.
  */
+/**
+ * A trader's promo spread, or undefined.
+ *
+ * Only used by run legs, which resume after a settlement and therefore hold no
+ * session. One lookup by primary key on a path that already touches the
+ * database several times.
+ */
+async function promoEdgeFor(userId: string): Promise<number | undefined> {
+  const { data, error } = await db
+    .from('users')
+    .select('promo_edge, promo_until')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error || !data) return undefined;
+  const row = data as { promo_edge: string | number | null; promo_until: string | null };
+  if (!row.promo_until || Date.parse(row.promo_until) <= Date.now()) return undefined;
+  if (row.promo_edge === null) return undefined;
+  return Number(row.promo_edge);
+}
+
 function legDirection(configured: 'BUY' | 'SELL' | 'AUTO'): 'BUY' | 'SELL' {
   if (configured !== 'AUTO') return configured;
   return Math.random() < 0.5 ? 'BUY' : 'SELL';
@@ -390,6 +410,13 @@ class TradingEngine {
     symbol?: string;
     runId?: string;
     runIndex?: number;
+    /**
+     * The spread this trader pays, when it differs from the platform's. Passed
+     * in rather than looked up because it rides on the session that the caller
+     * already holds — a query here would sit on the trade path and delay the
+     * entry stamp.
+     */
+    edge?: number;
   }): Promise<{ trade: PublicTrade; balance: number }> {
     const { userId, mode, direction, stake, durationSec } = params;
     // Clock starts before any awaiting, so the measurement includes the desk
@@ -449,9 +476,14 @@ class TradingEngine {
     // every instrument.
     // The live edge, not the deploy-time one. Read synchronously from cache so
     // pricing never waits on the database — see services/settings.ts.
-    const entry = applySpread(
-      mid, direction, multiplier, instrument.precision, settings.houseEdge()
-    );
+    // A promo's reduced spread if this trader holds one, otherwise the
+    // platform's live edge. Bounded here as well as at every write, because a
+    // bad value would mis-price a real position.
+    const edge =
+      typeof params.edge === 'number' && params.edge >= 0 && params.edge <= 0.2
+        ? params.edge
+        : settings.houseEdge();
+    const entry = applySpread(mid, direction, multiplier, instrument.precision, edge);
     const { stopOut, takeProfit } = exitLevels(
       entry,
       direction,
@@ -569,6 +601,8 @@ class TradingEngine {
     durationSec: Duration;
     count: number;
     symbol?: string;
+    /** The trader's promo spread, if they hold one. See placeTrade. */
+    edge?: number;
   }): Promise<{ run: PublicRun; trade: PublicTrade; balance: number }> {
     const { userId, mode, direction, stake, durationSec, count } = params;
 
@@ -608,7 +642,7 @@ class TradingEngine {
     try {
       const first = await this.placeTrade({
         userId, mode, direction: legDirection(direction), stake, durationSec,
-        symbol: instrument.symbol, runId: run.id, runIndex: 1,
+        symbol: instrument.symbol, runId: run.id, runIndex: 1, edge: params.edge,
       });
       return { run: toPublicRun(run), ...first };
     } catch (err) {
@@ -650,6 +684,7 @@ class TradingEngine {
     try {
       const next = await this.placeTrade({
         userId,
+        edge: await promoEdgeFor(userId),
         mode: run.account_mode,
         direction: legDirection(run.direction),
         stake: Number(run.stake),

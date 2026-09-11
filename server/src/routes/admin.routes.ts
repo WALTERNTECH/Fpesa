@@ -7,29 +7,13 @@ import { exposureGuard } from '../services/exposure.js';
 import { solvency } from '../services/solvency.js';
 import { priceFeed, SYMBOL } from '../services/prices.js';
 import { ALLOWED_DURATIONS, multiplierFor } from '../services/trading.js';
+import { winRateAt as sharedWinRateAt } from '../lib/stats.js';
 
 export const adminRouter = Router();
 
-/**
- * The share of positions that finish profitable at a given spread.
- *
- * Uses the normalCdf declared further down this file — declarations hoist, and
- * one copy of an approximation is better than two that can drift.
- *
- * Quoted on the reference ticket — FPX100 over 10s — because a win rate has no
- * meaning without saying on what. The shape is the same on every instrument,
- * since the multipliers are scaled to hold the barrier at a constant number of
- * standard deviations.
- *
- * It approaches 50% as the spread approaches zero and never passes it. That
- * ceiling is not a tuning choice: the series is driftless and symmetric, so
- * with no spread a position is a coin flip, and the gap below 50% is exactly
- * the house's revenue.
- */
+/** The reference ticket every quoted win rate is measured on. */
 function winRateAt(edge: number): number {
-  const multiplier = multiplierFor(10, SYMBOL);
-  const sd = env.synth.sigma * Math.sqrt(10);
-  return 1 - normalCdf(edge / multiplier / sd);
+  return sharedWinRateAt(edge, multiplierFor(10, SYMBOL), env.synth.sigma, 10);
 }
 
 adminRouter.use(requireAuth, (req, res, next) => {

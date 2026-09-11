@@ -3,7 +3,12 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { db } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
+import { env } from '../env.js';
 import { settings } from '../services/settings.js';
+import { solvency } from '../services/solvency.js';
+import { winRateAt as sharedWinRateAt } from '../lib/stats.js';
+import { multiplierFor } from '../services/trading.js';
+import { SYMBOL } from '../services/prices.js';
 import {
   ALLOWED_DURATIONS,
   TradeError,
@@ -16,6 +21,98 @@ import {
 } from '../services/trading.js';
 
 export const tradeRouter = Router();
+
+/** The reference ticket every quoted win rate is measured on: FPX100 over 10s. */
+function winRateAt(edge: number): number {
+  return sharedWinRateAt(edge, multiplierFor(10, SYMBOL), env.synth.sigma, 10);
+}
+
+/**
+ * The trading pass: what it costs, and what it actually buys.
+ *
+ * Quoted in win rates rather than percentages, because a spread means nothing
+ * to a trader on its own. At 11% they win 39 positions in 100; at 3%, 47. That
+ * is the product being sold and it should be stated as such — and it must never
+ * be dressed up as a change in profitability, which it is not.
+ */
+tradeRouter.get('/pass', requireAuth, async (req, res) => {
+  const { data, error } = await db
+    .from('pass_plans')
+    .select('*')
+    .eq('active', true)
+    .order('sort_order', { ascending: true });
+  if (error) {
+    res.status(500).json({ error: 'LOAD_FAILED', message: 'Could not load passes.' });
+    return;
+  }
+
+  const normal = settings.houseEdge();
+  const rows = (data ?? []) as Array<Record<string, unknown>>;
+  res.json({
+    normalEdge: normal,
+    normalWinRate: Number((winRateAt(normal) * 100).toFixed(1)),
+    // The trader's own pass, if one is running.
+    active: req.user!.promoUntil
+      ? {
+          code: req.user!.promoCode,
+          edge: req.user!.promoEdge,
+          validUntil: req.user!.promoUntil,
+          winRate: Number((winRateAt(req.user!.promoEdge ?? normal) * 100).toFixed(1)),
+        }
+      : null,
+    plans: rows.map((r) => ({
+      code: r.code,
+      label: r.label,
+      price: Number(r.price),
+      hours: Number(r.hours),
+      edge: Number(r.edge),
+      winRate: Number((winRateAt(Number(r.edge)) * 100).toFixed(1)),
+    })),
+  });
+});
+
+tradeRouter.post('/pass', requireAuth, async (req, res) => {
+  const plan = String((req.body as { plan?: unknown }).plan ?? '').trim().toUpperCase();
+  if (!/^[A-Z]{3,10}$/.test(plan)) {
+    res.status(400).json({ error: 'VALIDATION', message: 'Choose a pass.' });
+    return;
+  }
+
+  const { data, error } = await db.rpc('fpesa_buy_pass', { p_user: req.user!.id, p_plan: plan });
+  if (error) {
+    if (error.message.includes('NO_SUCH_PLAN')) {
+      res.status(400).json({ error: 'NO_SUCH_PLAN', message: 'That pass is not available.' });
+      return;
+    }
+    if (error.message.includes('INSUFFICIENT_FUNDS')) {
+      res.status(400).json({
+        error: 'INSUFFICIENT_FUNDS',
+        message: 'Your balance is too low for that pass. Deposit, or choose a shorter one.',
+      });
+      return;
+    }
+    console.error('[pass] purchase failed:', error.message);
+    res.status(500).json({ error: 'PASS_FAILED', message: 'Could not buy the pass.' });
+    return;
+  }
+
+  const r = data as {
+    plan: string; label: string; price: number;
+    edge: number; validUntil: string; balance: number;
+  };
+  console.log('[pass] ' + req.user!.username + ' bought ' + r.plan + ' for ' + r.price);
+
+  // Headroom rises by the price — the money stopped being owed to anyone — so
+  // the cached book is stale from this moment.
+  solvency.invalidate();
+
+  res.json({
+    ok: true,
+    ...r,
+    winRate: Number((winRateAt(r.edge) * 100).toFixed(1)),
+    normalWinRate: Number((winRateAt(settings.houseEdge()) * 100).toFixed(1)),
+  });
+});
 
 /**
  * Redeems a promo code, which lowers this trader's spread for a window.

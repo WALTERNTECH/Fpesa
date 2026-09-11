@@ -90,3 +90,23 @@ export function analyseTrade(params: {
     notes,
   };
 }
+
+/**
+ * The share of positions that finish profitable at a given spread.
+ *
+ * Quoted on a reference ticket, because a win rate is meaningless without
+ * saying on what. The shape is the same on every instrument: the multipliers
+ * are scaled by volatility so the barrier sits at a constant number of standard
+ * deviations everywhere.
+ *
+ * It approaches 50% as the spread approaches zero and never passes it. That
+ * ceiling is not a tuning choice — the series is driftless and symmetric, so
+ * with no spread a position is a coin flip, and the gap below 50% is exactly
+ * the operator's revenue. Any claim of a higher win rate is either a different
+ * product or a lie.
+ */
+export function winRateAt(edge: number, multiplier: number, sigma: number, durationSec = 10): number {
+  const sd = sigma * Math.sqrt(durationSec);
+  if (sd <= 0 || multiplier <= 0) return 0.5;
+  return 1 - normalCdf(edge / multiplier / sd);
+}

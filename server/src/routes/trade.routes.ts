@@ -8,7 +8,9 @@ import { settings } from '../services/settings.js';
 import { solvency } from '../services/solvency.js';
 import { winRateAt as sharedWinRateAt } from '../lib/stats.js';
 import { multiplierFor } from '../services/trading.js';
-import { SYMBOL } from '../services/prices.js';
+import { priceFeed, SYMBOL } from '../services/prices.js';
+import { getInstrument } from '../services/instruments.js';
+import { quoteDigital, digitalsEnabled, DIGITAL_WIN_RATES } from '../services/digital.js';
 import {
   ALLOWED_DURATIONS,
   TradeError,
@@ -162,6 +164,62 @@ tradeRouter.post('/promo', requireAuth, async (req, res) => {
   });
 });
 
+/**
+ * Prices a digital ticket without placing it.
+ *
+ * The trader has to see the barrier and the payout before they commit, the same
+ * way the scaled ticket shows its stop-out and spread. Everything here is
+ * computed from the instrument's published volatility — nothing reads ahead.
+ */
+tradeRouter.get('/digital/quote', requireAuth, (req, res) => {
+  if (!digitalsEnabled()) {
+    res.status(503).json({ error: 'DIGITAL_OFF', message: 'That product is not available yet.' });
+    return;
+  }
+  const raw = String(req.query.symbol ?? SYMBOL).toUpperCase();
+  const instrument = getInstrument(raw);
+  if (!instrument || !priceFeed.has(instrument.symbol)) {
+    res.status(400).json({ error: 'UNKNOWN_MARKET', message: 'No such market.' });
+    return;
+  }
+  const durationSec = Number(req.query.durationSec ?? 10);
+  if (!(ALLOWED_DURATIONS as readonly number[]).includes(durationSec)) {
+    res.status(400).json({ error: 'VALIDATION', message: 'Choose an offered duration.' });
+    return;
+  }
+
+  const edge = req.user!.promoEdge ?? settings.houseEdge();
+  const price = priceFeed.current(instrument.symbol).price;
+
+  res.json({
+    symbol: instrument.symbol,
+    durationSec,
+    price,
+    edge,
+    winRates: DIGITAL_WIN_RATES.map((winRate) => {
+      const buy = quoteDigital({
+        winRate, durationSec, price, sigma: instrument.sigma,
+        edge, direction: 'BUY', precision: instrument.precision,
+      });
+      const sell = quoteDigital({
+        winRate, durationSec, price, sigma: instrument.sigma,
+        edge, direction: 'SELL', precision: instrument.precision,
+      });
+      return {
+        winRate,
+        winRatePct: Number((winRate * 100).toFixed(0)),
+        payoutRate: Number(buy.payoutRate.toFixed(5)),
+        payoutPctOfStake: Number((buy.payoutRate * 100).toFixed(1)),
+        barrierMovePct: buy.barrierMovePct,
+        BUY: { barrier: buy.barrier },
+        SELL: { barrier: sell.barrier },
+        // -edge at every win rate, returned so no caller can quote better.
+        expectedPctOfStake: Number((buy.expectedPerUnit * 100).toFixed(2)),
+      };
+    }),
+  });
+});
+
 // A human cannot meaningfully place more than a couple of trades a second;
 // this stops a scripted client from hammering the settlement engine.
 const placeLimiter = rateLimit({
@@ -183,6 +241,8 @@ const placeSchema = z.object({
   // Omitted by older clients, which trade the default market. On a run this
   // also accepts 'AUTO', which lets the scan choose the instrument.
   symbol: z.string().min(1).max(16).optional(),
+  tradeType: z.enum(['SCALED', 'DIGITAL']).default('SCALED'),
+  winRate: z.coerce.number().optional(),
 });
 
 tradeRouter.post('/', requireAuth, placeLimiter, async (req, res) => {
@@ -194,10 +254,12 @@ tradeRouter.post('/', requireAuth, placeLimiter, async (req, res) => {
     });
     return;
   }
-  const { direction, stake, durationSec, accountMode, symbol } = parsed.data;
+  const { direction, stake, durationSec, accountMode, symbol, tradeType, winRate } = parsed.data;
 
   try {
     const result = await tradingEngine.placeTrade({
+      tradeType,
+      winRate,
       userId: req.user!.id,
       mode: accountMode,
       direction,

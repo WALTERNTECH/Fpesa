@@ -5,6 +5,7 @@ import { getInstrument, instrumentOr } from './instruments.js';
 import { exposureGuard } from './exposure.js';
 import { executionStats } from './execution-stats.js';
 import { settings } from './settings.js';
+import { quoteDigital, digitalsEnabled, isOfferedWinRate } from './digital.js';
 import { solvency } from './solvency.js';
 import { hub } from '../realtime/hub.js';
 
@@ -417,6 +418,10 @@ class TradingEngine {
      * entry stamp.
      */
     edge?: number;
+    /** 'SCALED' (the original product) or 'DIGITAL'. */
+    tradeType?: 'SCALED' | 'DIGITAL';
+    /** Digitals only: the share of positions that win, which sets the payout. */
+    winRate?: number;
   }): Promise<{ trade: PublicTrade; balance: number }> {
     const { userId, mode, direction, stake, durationSec } = params;
     // Clock starts before any awaiting, so the measurement includes the desk
@@ -483,14 +488,43 @@ class TradingEngine {
       typeof params.edge === 'number' && params.edge >= 0 && params.edge <= 0.2
         ? params.edge
         : settings.houseEdge();
-    const entry = applySpread(mid, direction, multiplier, instrument.precision, edge);
-    const { stopOut, takeProfit } = exitLevels(
-      entry,
-      direction,
-      multiplier,
-      env.maxProfitMultiple,
-      instrument.precision
-    );
+    const isDigital = params.tradeType === 'DIGITAL';
+    if (isDigital) {
+      if (!digitalsEnabled()) {
+        throw new TradeError('DIGITAL_OFF', 'That product is not available yet.', 503);
+      }
+      if (!isOfferedWinRate(params.winRate ?? env.digitalWinRate)) {
+        throw new TradeError('VALIDATION', 'Choose one of the offered win rates.');
+      }
+    }
+
+    // A digital carries its edge in the payout rather than in the entry price,
+    // so it opens at the mid with no spread applied. Marking the entry as well
+    // would charge the edge twice.
+    const quote = isDigital
+      ? quoteDigital({
+          winRate: params.winRate ?? env.digitalWinRate,
+          durationSec,
+          price: mid,
+          sigma: instrument.sigma,
+          edge,
+          direction,
+          precision: instrument.precision,
+        })
+      : null;
+
+    const entry = quote ? mid : applySpread(mid, direction, multiplier, instrument.precision, edge);
+    const { stopOut, takeProfit } = quote
+      // Digitals settle at expiry against their barrier and have no running
+      // exit levels, so the tick-by-tick barrier scan must never see them.
+      ? { stopOut: null as number | null, takeProfit: null as number | null }
+      : exitLevels(entry, direction, multiplier, env.maxProfitMultiple, instrument.precision);
+
+    // For a digital this is the win payout, which is exactly what the solvency
+    // guard should reserve: the most the position can ever pay out.
+    const maxProfit = quote
+      ? Math.round(rounded * quote.payoutRate * 100) / 100
+      : Math.round(rounded * env.maxProfitMultiple * 100) / 100;
 
     // Everything above this line is what stands between the tap and the price
     // the trader is given; everything below is bookkeeping that cannot change
@@ -510,11 +544,13 @@ class TradingEngine {
       p_multiplier: multiplier,
       p_stop_out: stopOut,
       p_take_profit: takeProfit,
-      p_max_profit: Math.round(rounded * env.maxProfitMultiple * 100) / 100,
+      p_max_profit: maxProfit,
       // Checked inside the same transaction that debits the balance, so two
       // trades arriving together cannot both pass a limit only one fits in.
       p_operator_float: env.operatorFloat,
       p_position_share: env.maxPositionShare,
+      p_trade_type: isDigital ? 'DIGITAL' : 'SCALED',
+      p_barrier: quote ? quote.barrier : null,
     });
 
     if (error) {

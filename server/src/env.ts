@@ -259,6 +259,16 @@ export const env = {
 
   supportTelegram: str('SUPPORT_TELEGRAM_URL', 'https://t.me/KRYPTONinv'),
 
+  /**
+   * Whether the digital product is open for business.
+   *
+   * Off by default so it can ship dark and be switched on once it has been
+   * exercised on a live deployment. The scaled product is unaffected either way.
+   */
+  digitalEnabled: bool('DIGITAL_ENABLED', false),
+  /** Win rate the digital ticket defaults to. The payout follows from it. */
+  digitalWinRate: num('DIGITAL_WIN_RATE', 0.7),
+
   sandbox: {
     /**
      * The only credential the sandbox has. There are no accounts in it — one

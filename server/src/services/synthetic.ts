@@ -84,6 +84,31 @@ export function replayEpoch(params: {
   return out;
 }
 
+/**
+ * Where an epoch is announced and later revealed.
+ *
+ * The engine calls these and does not wait for them. A record that fails to
+ * persist is a hole in the published history, which is serious — but an engine
+ * that stalled or threw because a database was briefly unreachable would stop
+ * settling live positions, which is worse. So the reporting is fire-and-forget
+ * here and the failure is counted and surfaced by the recorder instead.
+ */
+export type ChainReporter = {
+  /** Called at rotation, before the new epoch produces a tick. */
+  announce: (commitment: {
+    epoch: number;
+    seedHash: string;
+    startPrice: number;
+    tickMs: number;
+    epochMs: number;
+    sigma: number;
+    drift: number;
+    startedAt: number;
+  }) => void;
+  /** Called when an epoch closes and its seed becomes publishable. */
+  reveal: (epoch: number, seed: string, endedAt: number) => void;
+};
+
 export class SyntheticEngine {
   private epoch = 0;
   private seed = '';
@@ -93,15 +118,24 @@ export class SyntheticEngine {
   private tickIndex = 0;
   private price = 0;
   private history: EpochRecord[] = [];
+  private reporter: ChainReporter | null = null;
 
   constructor(
     private readonly tickMs: number,
     private readonly epochMs: number,
     private readonly sigma: number,
     private readonly drift: number,
-    basePrice: number
+    basePrice: number,
+    /**
+     * Where this symbol's chain left off, so the numbering continues across a
+     * restart instead of starting again at 1. Before this existed, every deploy
+     * reset the counter and orphaned the entire published record.
+     */
+    options?: { startEpoch?: number; reporter?: ChainReporter }
   ) {
     this.price = basePrice;
+    this.epoch = Math.max(options?.startEpoch ?? 0, 0);
+    this.reporter = options?.reporter ?? null;
     this.nextSeed = randomBytes(32).toString('hex');
     this.rotate();
   }
@@ -113,6 +147,7 @@ export class SyntheticEngine {
       if (previous && previous.epoch === this.epoch) {
         previous.endedAt = Date.now();
         previous.seed = this.seed; // revealed only now that it is closed
+        this.report(() => this.reporter?.reveal(this.epoch, this.seed, previous.endedAt!));
       }
     }
 
@@ -123,11 +158,12 @@ export class SyntheticEngine {
     this.startPrice = this.price;
     this.startedAt = Date.now();
     this.tickIndex = 0;
+    const seedHash = createHash('sha256').update(this.seed).digest('hex');
 
     this.history.push({
       epoch: this.epoch,
       startPrice: this.startPrice,
-      seedHash: createHash('sha256').update(this.seed).digest('hex'),
+      seedHash,
       startedAt: this.startedAt,
       endedAt: null,
       seed: null,
@@ -135,9 +171,40 @@ export class SyntheticEngine {
       sigma: this.sigma,
       drift: this.drift,
     });
+
+    // Announced before any tick of this epoch exists, which is the only moment
+    // at which a commitment means anything.
+    this.report(() =>
+      this.reporter?.announce({
+        epoch: this.epoch,
+        seedHash,
+        startPrice: this.startPrice,
+        tickMs: this.tickMs,
+        epochMs: this.epochMs,
+        sigma: this.sigma,
+        drift: this.drift,
+        startedAt: this.startedAt,
+      })
+    );
     // Keep a day of epochs available for anyone checking their trades.
     const keep = Math.ceil((24 * 60 * 60 * 1000) / this.epochMs) + 2;
     if (this.history.length > keep) this.history.splice(0, this.history.length - keep);
+  }
+
+  /**
+   * Runs a reporting callback without letting it affect price generation.
+   *
+   * rotate() is on the tick path. Anything that throws here would stop the
+   * market and strand open positions, so the record is allowed to fail and the
+   * prices are not.
+   */
+  private report(fn: () => void): void {
+    if (!this.reporter) return;
+    try {
+      fn();
+    } catch (err) {
+      console.error('[synthetic] chain reporter threw (prices unaffected):', err);
+    }
   }
 
   /** Advances one tick and returns the new price. */

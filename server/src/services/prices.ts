@@ -1,5 +1,6 @@
 import { env } from '../env.js';
-import { SyntheticEngine, type SyntheticEngine as Engine } from './synthetic.js';
+import { SyntheticEngine, type ChainReporter, type SyntheticEngine as Engine } from './synthetic.js';
+import { chainHashOf, loadHeads, recordEpoch, revealEpoch, type ChainHead } from './fairness-chain.js';
 import {
   DEFAULT_SYMBOL,
   INSTRUMENTS,
@@ -53,6 +54,31 @@ function roundTo(n: number, precision: number): number {
 /** Ticks of log-returns kept for the realised-volatility measure (~60s). */
 const VOL_WINDOW = 240;
 
+/**
+ * Wires one symbol's engine to the durable chain.
+ *
+ * The previous chain hash is held here and advanced on each announcement, so
+ * the engine itself stays free of any knowledge of storage — it reports what it
+ * did, and this decides how that is linked and recorded.
+ */
+function buildReporter(symbol: string, startHash: string | null): ChainReporter {
+  let prevChainHash = startHash;
+  return {
+    announce: (c) => {
+      const commitment = { symbol, ...c };
+      const chainHash = chainHashOf(prevChainHash, commitment);
+      const linkedFrom = prevChainHash;
+      // Advanced immediately so the next epoch links correctly even while this
+      // write is still in flight.
+      prevChainHash = chainHash;
+      void recordEpoch(commitment, linkedFrom, chainHash);
+    },
+    reveal: (epoch, seed, endedAt) => {
+      void revealEpoch(symbol, epoch, seed, endedAt);
+    },
+  };
+}
+
 class InstrumentFeed {
   price: number;
   dayOpen: number;
@@ -64,7 +90,12 @@ class InstrumentFeed {
   private anchor = 0;
   private anchored = false;
 
-  constructor(readonly instrument: Instrument, synthetic: boolean) {
+  constructor(
+    readonly instrument: Instrument,
+    synthetic: boolean,
+    /** Where this symbol's published chain left off, if it has one. */
+    head?: ChainHead
+  ) {
     this.price = instrument.basePrice;
     this.dayOpen = instrument.basePrice;
     if (synthetic) {
@@ -73,7 +104,13 @@ class InstrumentFeed {
         env.synth.epochMs,
         instrument.sigma,
         env.synth.drift,
-        instrument.basePrice
+        instrument.basePrice,
+        {
+          // Continue the numbering rather than restarting at 1. A restart used
+          // to orphan every epoch before it.
+          startEpoch: head?.epoch ?? 0,
+          reporter: buildReporter(instrument.symbol, head?.chainHash ?? null),
+        }
       );
       this.price = this.engine.current();
       this.dayOpen = this.price;
@@ -255,8 +292,20 @@ class PriceFeed {
      * markets would be dressing up a simulation as a feed.
      */
     const list = synthetic ? INSTRUMENTS : INSTRUMENTS.filter((i) => i.symbol === SYMBOL);
+    // Read where every chain left off before any engine starts, so each one
+    // resumes its own numbering instead of beginning again at 1.
+    const heads = synthetic ? await loadHeads() : new Map<string, ChainHead>();
     for (const instrument of list) {
-      this.feeds.set(instrument.symbol, new InstrumentFeed(instrument, synthetic));
+      this.feeds.set(
+        instrument.symbol,
+        new InstrumentFeed(instrument, synthetic, heads.get(instrument.symbol))
+      );
+    }
+    if (synthetic && heads.size) {
+      console.log(
+        '[fairness] resumed ' + heads.size + ' chain(s): ' +
+        [...heads.entries()].map(([s2, h]) => s2 + '@' + h.epoch).join(' ')
+      );
     }
 
     if (!synthetic) {

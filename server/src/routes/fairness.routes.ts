@@ -3,6 +3,7 @@ import { env } from '../env.js';
 import { requireAuth } from '../lib/auth.js';
 import { priceFeed, SYMBOL } from '../services/prices.js';
 import { getInstrument, INSTRUMENTS } from '../services/instruments.js';
+import { readChain, unrecordedCount } from '../services/fairness-chain.js';
 
 export const fairnessRouter = Router();
 
@@ -25,7 +26,7 @@ function pick(raw: unknown): string | null {
  * Note what is deliberately absent: the seed of the *running* epoch. It is
  * never served until its epoch has ended.
  */
-fairnessRouter.get('/', (req, res) => {
+fairnessRouter.get('/', async (req, res) => {
   const symbol = pick(req.query.symbol);
   if (!symbol) {
     res.status(400).json({ error: 'UNKNOWN_MARKET', message: 'No such market.' });
@@ -46,6 +47,7 @@ fairnessRouter.get('/', (req, res) => {
   }
 
   const params = engine.params();
+  const chain = await readChain(symbol);
   res.json({
     mode: env.priceMode,
     symbol,
@@ -70,10 +72,34 @@ fairnessRouter.get('/', (req, res) => {
       drift: params.drift,
     },
     current: engine.commitment(),
-    revealed: engine.revealed(24),
+    // Served from the database rather than this process's memory. It used to
+    // come from memory, which meant a restart reset the epoch counter to 1 and
+    // orphaned every epoch before it — a discarded epoch and a deploy looked
+    // identical, which is the one thing a commitment scheme must not allow.
+    revealed: chain.epochs,
+    chain: {
+      head: chain.head,
+      // null means the record could not be read, which is an infrastructure
+      // problem and not a tampering claim. Only false means the links broke.
+      readable: chain.readable,
+      linksValid: chain.linksValid,
+      brokenAt: chain.brokenAt,
+      unrecorded: unrecordedCount(),
+      algorithm:
+        'chainHash = sha256(prevChainHash + "|" + symbol|epoch|seedHash|' +
+        'startPrice(6dp)|tickMs|epochMs|sigma(12dp)|drift(12dp)|startedAt)',
+      note:
+        'Each epoch is written before it produces a tick and linked to the one ' +
+        'before it, so no epoch can be removed, reordered or edited — including ' +
+        'its sigma and drift — without breaking every link after it. Record the ' +
+        'head yourself periodically: this is published by the operator, so it is ' +
+        'tamper-evident to anyone holding an earlier head, and only that outside ' +
+        'witness makes it tamper-proof.',
+    },
     verify:
       'node scripts/verify-epoch.mjs <epoch> [symbol] — replays a closed epoch ' +
-      'from its published seed and checks it against sha256(seed).',
+      'from its published seed and checks it against sha256(seed). ' +
+      'node scripts/verify-chain.mjs [symbol] — walks the whole chain.',
   });
 });
 

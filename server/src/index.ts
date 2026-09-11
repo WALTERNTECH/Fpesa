@@ -26,6 +26,7 @@ import { adminRouter } from './routes/admin.routes.js';
 import { internalRouter } from './routes/internal.routes.js';
 import { sandboxRouter } from './routes/sandbox.routes.js';
 import { sandboxBook } from './services/sandbox.js';
+import { shadowFeed } from './services/sandbox-mirror.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const isAdmin = env.appMode === 'admin';
@@ -188,6 +189,9 @@ async function main(): Promise<void> {
     // live price feed is deliberately not started: the sandbox neither reads it
     // nor needs it, which is what makes it impossible to repoint at live.
     sandboxBook.start();
+    // Follows production's public tick stream so the shadow book runs on the
+    // prices production actually sent, not on a re-derivation of them.
+    shadowFeed.start();
   } else if (!isAdmin) {
     await priceFeed.start();
     hub.attach(server);
@@ -211,7 +215,10 @@ async function main(): Promise<void> {
 
   const shutdown = (signal: string): void => {
     console.log('[fpesa] ' + signal + ' received, shutting down');
-    if (isSandbox) sandboxBook.stop();
+    if (isSandbox) {
+      sandboxBook.stop();
+      shadowFeed.stop();
+    }
     tradingEngine.stop();
     exposureGuard.stop();
     priceFeed.stop();

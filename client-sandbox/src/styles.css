@@ -445,3 +445,12 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px;
   font-variant-numeric: tabular-nums;
 }
 .book-top small { font-size: 10.5px; }
+
+/* -------------------------------------------------------------- forecast */
+/* The cone widens with time; the centre stays flat, which is the result. */
+.cone95 { fill: rgba(109, 40, 217, 0.10); }
+.cone68 { fill: rgba(109, 40, 217, 0.20); }
+.cone-centre { stroke: var(--brand); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.sw-centre { border-color: var(--brand); }
+.sw-68 { border-color: rgba(109, 40, 217, 0.55); border-top-width: 6px; }
+.sw-95 { border-color: rgba(109, 40, 217, 0.25); border-top-width: 6px; }

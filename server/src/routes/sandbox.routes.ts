@@ -7,6 +7,8 @@ import { sandboxBook, SandboxError } from '../services/sandbox.js';
 import { fetchEpochs, runReplay } from '../services/sandbox-replay.js';
 import { stressBook } from '../services/sandbox-book.js';
 import { conform } from '../services/sandbox-conform.js';
+import { shadowFeed } from '../services/sandbox-mirror.js';
+import { audit, forecast } from '../services/sandbox-forecast.js';
 
 /**
  * The sandbox API.
@@ -240,6 +242,125 @@ sandboxRouter.post('/replay', requireSandboxSession, (req, res) => {
   })
     .then((r) => res.json(r))
     .catch((err) => fail(res, err));
+});
+
+// -------------------------------------------------------------- forecast
+
+/**
+ * The forecast for the live market: centre, uncertainty bands, barrier odds.
+ *
+ * Built on production's live mid and published sigma. The centre line is flat
+ * because that is the correct estimate for a driftless walk, not because
+ * anything is being withheld — see services/sandbox-forecast.ts.
+ */
+sandboxRouter.get('/forecast', requireSandboxSession, (req, res) => {
+  const symbol = pickSymbol(req.query.symbol);
+  if (!symbol) {
+    res.status(400).json({ error: 'UNKNOWN_MARKET', message: 'No such market.' });
+    return;
+  }
+  void (async () => {
+    // env.ts already strips any trailing slash from this.
+    const base = env.sandbox.replaySource || 'https://www.fpesa.markets';
+    const [quote, fair] = await Promise.all([
+      fetch(base + '/api/market/quote?symbol=' + encodeURIComponent(symbol)).then((r) => r.json()),
+      fetch(base + '/api/fairness?symbol=' + encodeURIComponent(symbol)).then((r) => r.json()),
+    ]);
+    const q = quote as { price: number };
+    const f = fair as { parameters: { sigma: number } };
+    res.json(forecast(symbol, q.price, f.parameters.sigma));
+  })().catch((err) => fail(res, err));
+});
+
+/**
+ * Does the live market's real history contain anything a forecast could use?
+ *
+ * Rebuilt from the seeds production published when each epoch closed, then
+ * tested for autocorrelation, variance ratios, sign persistence, and whether
+ * momentum or reversion beat the spread.
+ */
+sandboxRouter.get('/forecast/audit', requireSandboxSession, (req, res) => {
+  const symbol = pickSymbol(req.query.symbol);
+  if (!symbol) {
+    res.status(400).json({ error: 'UNKNOWN_MARKET', message: 'No such market.' });
+    return;
+  }
+  void audit(symbol)
+    .then((r) => res.json(r))
+    .catch((err) => fail(res, err));
+});
+
+// ---------------------------------------------------------------- shadow
+
+/**
+ * Shadow mode: this book running on production's own tick stream.
+ *
+ * There is deliberately no oracle here. These prices come from a market whose
+ * seed this process does not hold, so there is no future to look at — following
+ * a market and seeing ahead of it are the same fact from two sides. See
+ * services/sandbox-mirror.ts.
+ */
+sandboxRouter.get('/shadow', requireSandboxSession, (req, res) => {
+  const symbol = pickSymbol(req.query.symbol);
+  if (!symbol) {
+    res.status(400).json({ error: 'UNKNOWN_MARKET', message: 'No such market.' });
+    return;
+  }
+  try {
+    res.json({
+      ...shadowFeed.status(),
+      ...shadowFeed.state(sessionId(req)),
+      symbol,
+      recent: shadowFeed.recent(symbol),
+      durations: [...ALLOWED_DURATIONS],
+      maxProfitMultiple: env.maxProfitMultiple,
+      houseEdge: env.houseEdge,
+    });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+sandboxRouter.post('/shadow/trade', requireSandboxSession, (req, res) => {
+  const body = req.body as Record<string, unknown>;
+  const symbol = pickSymbol(body.symbol);
+  if (!symbol) {
+    res.status(400).json({ error: 'UNKNOWN_MARKET', message: 'No such market.' });
+    return;
+  }
+  const direction = String(body.direction ?? '').toUpperCase();
+  if (direction !== 'BUY' && direction !== 'SELL') {
+    res.status(400).json({ error: 'VALIDATION', message: 'Pick Buy or Sell.' });
+    return;
+  }
+  try {
+    shadowFeed.open(sessionId(req), {
+      symbol,
+      direction,
+      stake: Number(body.stake),
+      durationSec: Number(body.durationSec),
+    });
+    res.status(201).json({
+      ...shadowFeed.status(),
+      ...shadowFeed.state(sessionId(req)),
+      symbol,
+      recent: shadowFeed.recent(symbol),
+      durations: [...ALLOWED_DURATIONS],
+      maxProfitMultiple: env.maxProfitMultiple,
+      houseEdge: env.houseEdge,
+    });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+sandboxRouter.post('/shadow/reset', requireSandboxSession, (req, res) => {
+  try {
+    shadowFeed.reset(sessionId(req));
+    res.json({ ok: true });
+  } catch (err) {
+    fail(res, err);
+  }
 });
 
 // ------------------------------------------------------------ conformance

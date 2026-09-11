@@ -102,6 +102,12 @@ if (f.chain?.unrecorded) {
 console.log('');
 
 let failures = 0;
+// Kept apart on purpose: a broken hash or link is evidence the record was
+// altered, while an orphaned epoch is a gap in what can be checked. Reporting
+// the second as the first would accuse an operator of tampering over what is
+// usually a hard restart.
+let integrityFailures = 0;
+let verifiabilityGaps = 0;
 let previous = null;
 
 for (const e of epochs) {
@@ -115,6 +121,15 @@ for (const e of epochs) {
     if (e.epoch !== previous.epoch + 1) problems.push('gap: follows #' + previous.epoch);
   }
 
+  if (e.orphaned) {
+    // Committed, its window long gone, and still no seed. The chain proves it
+    // existed and proves it was not edited, but its ticks can never be checked
+    // against anything. That is a real hole and the verifier must not pass over
+    // it quietly just because the hashes line up.
+    problems.push('committed but never revealed — its ticks can never be verified');
+    verifiabilityGaps += 1;
+  }
+
   if (e.seed) {
     const h = createHash('sha256').update(e.seed).digest('hex');
     if (h !== e.seedHash) problems.push('seed does not hash to its published commitment');
@@ -122,6 +137,7 @@ for (const e of epochs) {
 
   if (problems.length) {
     failures += 1;
+    if (problems.some((x) => !x.startsWith('committed but never revealed'))) integrityFailures += 1;
     console.log('  #' + String(e.epoch).padEnd(6) + ' FAIL  ' + problems.join('; '));
   }
   previous = e;
@@ -130,6 +146,9 @@ for (const e of epochs) {
 if (failures === 0) {
   console.log('  all ' + epochs.length + ' epochs: hashes match, links intact, no gaps, ' +
     'every revealed seed matches its commitment.');
+} else {
+  console.log('');
+  console.log('  ' + failures + ' of ' + epochs.length + ' epochs did not pass.');
 }
 
 // --- the check only you can make ---------------------------------------
@@ -174,13 +193,27 @@ if (doReplay) {
 }
 
 console.log('');
-if (failures === 0) {
-  console.log('PASS. Record this head and check it again later:');
+if (integrityFailures > 0) {
+  console.log('FAIL — ' + integrityFailures + ' epoch(s) do not hold together. The record ' +
+    'has been altered, or was never written the way the algorithm says.');
+} else if (verifiabilityGaps > 0) {
+  console.log('INTACT, WITH GAPS — the chain itself checks out: nothing has been altered, ' +
+    'reordered or removed.');
+  console.log('  But ' + verifiabilityGaps + ' epoch(s) were committed and never revealed, so ' +
+    'the prices inside them cannot be replayed.');
+  console.log('  That is what a hard restart looks like. It is not evidence of tampering — ' +
+    'and it is not proof of innocence either, which is why it is reported.');
+  console.log('');
+  console.log('  Record this head and check it again later:');
   console.log('  ' + (f.chain?.head?.chainHash ?? epochs[epochs.length - 1].chainHash));
 } else {
-  console.log('FAIL — ' + failures + ' problem(s). The published record does not hold together.');
+  console.log('PASS. Record this head and check it again later:');
+  console.log('  ' + (f.chain?.head?.chainHash ?? epochs[epochs.length - 1].chainHash));
 }
 // Set rather than force-exit: an abrupt exit() while the fetch socket is still
 // closing trips a libuv assertion on Windows, which looks like the verifier
 // itself failed.
-process.exitCode = failures === 0 ? 0 : 1;
+// 1 means the record was altered. 3 means it is intact but incomplete — a
+// distinction worth having in a CI job, which should page someone for the first
+// and merely record the second.
+process.exitCode = integrityFailures > 0 ? 1 : verifiabilityGaps > 0 ? 3 : 0;

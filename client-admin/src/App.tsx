@@ -42,6 +42,24 @@ type Overview = {
   upstream?: { ok: boolean; url: string };
 };
 
+type EdgeView = {
+  edge: number;
+  managed: boolean;
+  deployDefault: number;
+  min: number;
+  max: number;
+  reason: string | null;
+  updatedAt: string | null;
+  history: Array<{
+    id: number;
+    from: number | null;
+    to: number;
+    reason: string;
+    admin: string;
+    createdAt: string;
+  }>;
+};
+
 type Cell = {
   multiplier: number;
   stopOutOdds: number | null;
@@ -210,6 +228,7 @@ function Dashboard({ onOut }: { onOut: () => void }): JSX.Element {
         {tab === 'book' && !d && !error && <div className="muted">Loading…</div>}
 
         {tab === 'book' && <FloatEditor />}
+        {tab === 'book' && <EdgeEditor />}
 
         {tab === 'book' && d && (
           <>
@@ -804,6 +823,149 @@ function StatementEditor({ user, statement, onDone }: {
           </p>
         )}
       </div>
+    </section>
+  );
+}
+
+/**
+ * The house edge — the price of the product.
+ *
+ * It lived in TRADE_HOUSE_EDGE, which meant repricing needed a redeploy and so
+ * in practice never happened. Changing what every trader pays deserves the same
+ * treatment as restating the payout wallet, so it is audited the same way and
+ * the reason is mandatory.
+ *
+ * The panel shows what the number actually does to a trader rather than leaving
+ * it as an abstraction: the cost on a ticket, and how long a deposit survives.
+ * An edge is easy to set carelessly when it is expressed as 0.11.
+ */
+function EdgeEditor(): JSX.Element {
+  const [d, setD] = useState<EdgeView | null>(null);
+  const [pct, setPct] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const next = await call<EdgeView>('/admin/edge');
+      setD(next);
+      setPct((next.edge * 100).toFixed(2));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load the edge.');
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const entered = Number(pct);
+  const asFraction = entered / 100;
+  const valid =
+    Number.isFinite(entered) && entered >= 0 && entered <= 20 &&
+    reason.trim().length >= 3 && (!d || Math.abs(asFraction - d.edge) > 1e-9);
+
+  const save = async (): Promise<void> => {
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      const res = await call<{ previous: number | null; edge: number }>(
+        '/admin/edge', { edge: Number(asFraction.toFixed(6)), reason: reason.trim() }
+      );
+      setNotice(
+        'Edge ' +
+        (res.previous === null ? 'set to ' : (res.previous * 100).toFixed(2) + '% to ') +
+        (res.edge * 100).toFixed(2) + '%. It applies to the next position opened.'
+      );
+      setReason('');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save the edge.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!d) return <section><h2>House edge</h2><p className="muted">Loading…</p></section>;
+
+  // A KSh 1,000 ticket, and how many average trades a KSh 5,000 deposit buys at
+  // this edge. Both are what the operator is really choosing.
+  const shown = Number.isFinite(asFraction) ? asFraction : d.edge;
+  const perTicket = Math.round(1000 * shown);
+  const AVG_STAKE = 366;
+  const trades = shown > 0 ? Math.round(5000 / (AVG_STAKE * shown)) : null;
+
+  return (
+    <section>
+      <h2>House edge</h2>
+
+      {error && <div className="err">{error}</div>}
+      {notice && <div className="ok">{notice}</div>}
+
+      <div className="grid">
+        <Stat k="Charged per trade" v={(d.edge * 100).toFixed(2) + '%'} />
+        <Stat k="On a KSh 1,000 ticket" v={ksh(Math.round(1000 * d.edge))} />
+        <Stat k="Source" v={d.managed ? 'set here' : 'from the deploy'} />
+        <Stat k="Allowed range" v={(d.min * 100) + '% – ' + (d.max * 100) + '%'} />
+      </div>
+
+      <div className="adjust">
+        <div className="row">
+          <label>
+            Edge, as a percentage
+            <input
+              type="number"
+              step="0.5"
+              min={0}
+              max={20}
+              value={pct}
+              onChange={(e) => { setPct(e.target.value); setNotice(null); }}
+            />
+          </label>
+          <label>
+            Reason
+            <input
+              value={reason}
+              onChange={(e) => { setReason(e.target.value); setNotice(null); }}
+              placeholder="e.g. lowered so traders last longer"
+            />
+          </label>
+        </div>
+
+        {Number.isFinite(entered) && entered >= 0 && entered <= 20 && (
+          <p className="preview">
+            A KSh 1,000 ticket costs <b>{ksh(perTicket)}</b> to open.
+            {trades !== null && (
+              <> A KSh 5,000 deposit lasts roughly <b>{trades}</b> trades at your
+              average stake of {ksh(AVG_STAKE)}.</>
+            )}
+          </p>
+        )}
+
+        <button className="btn" disabled={!valid || busy} onClick={() => void save()}>
+          {busy ? 'Saving…' : 'Save edge'}
+        </button>
+      </div>
+
+      {d.history.length > 0 && (
+        <div className="scroll" style={{ marginTop: 12 }}>
+          <table>
+            <thead>
+              <tr><th>When</th><th>From</th><th>To</th><th>Reason</th><th>By</th></tr>
+            </thead>
+            <tbody>
+              {d.history.map((h) => (
+                <tr key={h.id}>
+                  <td>{new Date(h.createdAt).toLocaleString('en-KE')}</td>
+                  <td>{h.from === null ? '—' : (h.from * 100).toFixed(2) + '%'}</td>
+                  <td>{(h.to * 100).toFixed(2)}%</td>
+                  <td>{h.reason}</td>
+                  <td>{h.admin}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }

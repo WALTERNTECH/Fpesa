@@ -8,6 +8,7 @@ import { solvency } from '../services/solvency.js';
 import { analyseTrade } from '../lib/stats.js';
 import { env } from '../env.js';
 import { peekRate } from '../services/fx.js';
+import { settings } from '../services/settings.js';
 import { executionStats } from '../services/execution-stats.js';
 
 export const marketRouter = Router();
@@ -112,7 +113,7 @@ marketRouter.get('/analyse', (req, res) => {
       stake,
       durationSec,
       multiplier: multiplierFor(durationSec, symbol),
-      houseEdge: env.houseEdge,
+      houseEdge: settings.houseEdge(),
       sigma,
       maxProfitMultiple: env.maxProfitMultiple,
     })
@@ -250,7 +251,7 @@ marketRouter.get('/conditions', (_req, res) => {
     durations,
     markets,
     best,
-    houseEdge: env.houseEdge,
+    houseEdge: settings.houseEdge(),
     maxProfitMultiple: env.maxProfitMultiple,
   });
 });
@@ -308,7 +309,7 @@ marketRouter.get('/config', async (_req, res) => {
     maxProfitMultiple: env.maxProfitMultiple,
     // Disclosed, not buried: the trader can see the cost of opening a position
     // before they open one, the same way a broker publishes its spread.
-    houseEdge: env.houseEdge,
+    houseEdge: settings.houseEdge(),
     turnoverMultiple: env.turnoverMultiple,
     minDeposit: env.minDeposit,
     /** Deposits are entered in this currency; everything else is shillings. */

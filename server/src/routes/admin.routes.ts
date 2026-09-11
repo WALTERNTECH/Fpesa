@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { env } from '../env.js';
 import { db, pgErrorCode } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
-import { notifyBalance, notifyFloatChanged } from './internal.routes.js';
+import { notifyBalance, notifyEdgeChanged, notifyFloatChanged } from './internal.routes.js';
 import { exposureGuard } from '../services/exposure.js';
 import { solvency } from '../services/solvency.js';
 import { priceFeed, SYMBOL } from '../services/prices.js';
@@ -449,6 +449,110 @@ adminRouter.get('/conditions', async (_req, res) => {
   } catch {
     res.status(502).json({ error: 'UPSTREAM', message: 'Could not reach the trading service.' });
   }
+});
+
+/**
+ * The house edge — the price of the product.
+ *
+ * It was an environment variable, which meant repricing needed a redeploy. It
+ * now sits beside the operator float: same table, same audit log, same
+ * mandatory reason, because changing what every trader pays is at least as
+ * consequential as restating the payout wallet.
+ *
+ * Bounded 0–20% in the database. Above that it is not a spread — at 80% a
+ * position would lose four fifths of its stake the moment it opened — and a
+ * stray keystroke must not be able to make every trade on the platform
+ * unwinnable.
+ */
+adminRouter.get('/edge', async (_req, res) => {
+  const [setting, history] = await Promise.all([
+    db.from('platform_settings').select('value, reason, updated_at')
+      .eq('key', 'house_edge').maybeSingle(),
+    db.from('platform_settings_log')
+      .select('id, old_value, new_value, reason, created_at, admin_id')
+      .eq('key', 'house_edge').order('created_at', { ascending: false }).limit(20),
+  ]);
+
+  const rows = (history.data ?? []) as Array<Record<string, unknown>>;
+  const ids = [...new Set(rows.map((r) => String(r.admin_id)))];
+  const { data: people } = ids.length
+    ? await db.from('users').select('id, username').in('id', ids)
+    : { data: [] as Array<{ id: string; username: string }> };
+  const nameOf = new Map(
+    ((people ?? []) as Array<{ id: string; username: string }>).map((p) => [p.id, p.username])
+  );
+
+  const s = setting.data as Record<string, unknown> | null;
+  res.json({
+    edge: s ? Number(s.value) : env.houseEdge,
+    /** True once set here rather than inherited from the deploy. */
+    managed: Boolean(s),
+    deployDefault: env.houseEdge,
+    min: 0,
+    max: 0.2,
+    reason: s ? s.reason : null,
+    updatedAt: s ? s.updated_at : null,
+    history: rows.map((r) => ({
+      id: r.id,
+      from: r.old_value === null ? null : Number(r.old_value),
+      to: Number(r.new_value),
+      reason: r.reason,
+      admin: nameOf.get(String(r.admin_id)) ?? '—',
+      createdAt: r.created_at,
+    })),
+  });
+});
+
+adminRouter.post('/edge', async (req, res) => {
+  const body = req.body as { edge?: unknown; reason?: unknown };
+  const edge = Number(body.edge);
+  const reason = String(body.reason ?? '').trim();
+
+  if (!Number.isFinite(edge) || edge < 0 || edge > 0.2) {
+    res.status(400).json({
+      error: 'INVALID_VALUE',
+      message: 'The edge must be between 0% and 20%. Enter it as a fraction, so 0.05 is 5%.',
+    });
+    return;
+  }
+  if (reason.length < 3) {
+    res.status(400).json({
+      error: 'REASON_REQUIRED',
+      message: 'Give a reason — it is stored against the change.',
+    });
+    return;
+  }
+
+  const { data, error } = await db.rpc('fpesa_set_house_edge', {
+    p_admin: req.user!.id,
+    p_value: edge,
+    p_reason: reason,
+  });
+
+  if (error) {
+    const code = pgErrorCode(error.message);
+    if (code === 'INVALID_VALUE' || code === 'REASON_REQUIRED') {
+      res.status(400).json({ error: code, message: 'Check the value and the reason.' });
+      return;
+    }
+    console.error('[admin] edge update failed:', error.message);
+    res.status(500).json({ error: 'EDGE_FAILED', message: 'Could not save the edge.' });
+    return;
+  }
+
+  const result = data as { previous: number | null; value: number };
+  console.log(
+    '[admin] ' + req.user!.username + ' set the house edge to ' +
+    (result.value * 100).toFixed(2) + '% (was ' +
+    (result.previous === null ? 'unset' : (Number(result.previous) * 100).toFixed(2) + '%') +
+    '): ' + reason
+  );
+
+  // The trading service prices from a cached copy, so tell it to re-read rather
+  // than leaving trades on the old spread for up to half a minute.
+  await notifyEdgeChanged();
+
+  res.json({ ok: true, previous: result.previous, edge: result.value });
 });
 
 // ------------------------------------------------------------ user accounts

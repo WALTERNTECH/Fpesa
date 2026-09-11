@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { env } from '../env.js';
 import { hub } from '../realtime/hub.js';
 import { solvency } from '../services/solvency.js';
+import { settings } from '../services/settings.js';
 
 export const internalRouter = Router();
 
@@ -48,6 +49,16 @@ internalRouter.post('/notify', (req, res) => {
     return;
   }
 
+  // The house edge changed in the console. Re-read it now rather than on the
+  // next timer tick, so trades are not priced at the old spread for up to half
+  // a minute after an operator has changed it. Like the float, this only
+  // triggers a read.
+  if (claim.kind === 'edge') {
+    void settings.refresh();
+    res.json({ ok: true });
+    return;
+  }
+
   if (!claim.sub) {
     res.status(400).json({ error: 'NO_SUBJECT' });
     return;
@@ -60,6 +71,28 @@ internalRouter.post('/notify', (req, res) => {
   });
   res.json({ ok: true });
 });
+
+/** Tells the trading service the house edge has changed and to re-read it. */
+export async function notifyEdgeChanged(): Promise<void> {
+  if (env.appMode !== 'admin') {
+    await settings.refresh();
+    return;
+  }
+  try {
+    const token = jwt.sign({ kind: 'edge' }, env.jwtSecret, { expiresIn: '30s' });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    await fetch(env.upstreamUrl + '/api/internal/notify', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+  } catch {
+    // The trading service re-reads on its own timer within thirty seconds.
+  }
+}
 
 /** Tells the trading service its cached view of the book is out of date. */
 export async function notifyFloatChanged(): Promise<void> {

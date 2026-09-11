@@ -4,6 +4,7 @@ import { priceFeed, SYMBOL } from './prices.js';
 import { getInstrument, instrumentOr } from './instruments.js';
 import { exposureGuard } from './exposure.js';
 import { executionStats } from './execution-stats.js';
+import { settings } from './settings.js';
 import { solvency } from './solvency.js';
 import { hub } from '../realtime/hub.js';
 
@@ -446,7 +447,11 @@ class TradingEngine {
     // marked against the trader by edge/multiplier, so the expected cost is
     // exactly env.houseEdge of the stake, identically at every duration and on
     // every instrument.
-    const entry = applySpread(mid, direction, multiplier, instrument.precision);
+    // The live edge, not the deploy-time one. Read synchronously from cache so
+    // pricing never waits on the database — see services/settings.ts.
+    const entry = applySpread(
+      mid, direction, multiplier, instrument.precision, settings.houseEdge()
+    );
     const { stopOut, takeProfit } = exitLevels(
       entry,
       direction,

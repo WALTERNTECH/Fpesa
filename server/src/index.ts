@@ -25,6 +25,7 @@ import { fairnessRouter } from './routes/fairness.routes.js';
 import { adminRouter } from './routes/admin.routes.js';
 import { internalRouter } from './routes/internal.routes.js';
 import { sandboxRouter } from './routes/sandbox.routes.js';
+import { settings } from './services/settings.js';
 import { sandboxBook } from './services/sandbox.js';
 import { shadowFeed } from './services/sandbox-mirror.js';
 
@@ -201,6 +202,8 @@ async function main(): Promise<void> {
     exposureGuard.start();
     // Reads the payout wallet and keeps the float honest without anyone
     // having to remember to update it.
+    // Keeps the live house edge in step with the console without a redeploy.
+    settings.start();
     solvency.startFloatSync();
     startFx();
   }

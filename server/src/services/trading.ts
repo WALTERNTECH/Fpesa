@@ -529,13 +529,20 @@ class TradingEngine {
     // rather than in shillings: the same move means something different on an
     // index at 6,500 and one at 1,000, but a share of the stop-out distance is
     // comparable everywhere.
-    const barrier = mid / multiplier;
-    executionStats.record({
-      symbol,
-      stampMs: stampedAt - arrivedAt,
-      writeMs: Date.now() - writeStartedAt,
-      driftShareOfBarrier: barrier > 0 ? Math.abs(mid - priceOnArrival) / barrier : 0,
-    });
+    try {
+      const barrier = mid / multiplier;
+      executionStats.record({
+        symbol,
+        stampMs: stampedAt - arrivedAt,
+        writeMs: Date.now() - writeStartedAt,
+        driftShareOfBarrier: barrier > 0 ? Math.abs(mid - priceOnArrival) / barrier : 0,
+      });
+    } catch (err) {
+      // The position is already open and the trader is owed their receipt. A
+      // statistics failure must not turn a successful trade into an error the
+      // client shows as a failure, so it is logged and dropped.
+      console.error('[trading] execution stats failed (trade is unaffected):', err);
+    }
 
     return { trade, balance: Number(result.balance) };
   }

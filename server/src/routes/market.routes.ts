@@ -310,6 +310,10 @@ marketRouter.get('/config', async (_req, res) => {
     // Disclosed, not buried: the trader can see the cost of opening a position
     // before they open one, the same way a broker publishes its spread.
     houseEdge: settings.houseEdge(),
+    // Whether the digital ticket is on offer. The client needs it to know
+    // whether to show that product at all, and it makes the flag checkable
+    // from outside rather than only in a dashboard.
+    digitalEnabled: env.digitalEnabled,
     turnoverMultiple: env.turnoverMultiple,
     minDeposit: env.minDeposit,
     /** Deposits are entered in this currency; everything else is shillings. */

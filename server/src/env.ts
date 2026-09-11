@@ -22,15 +22,23 @@ export const env = {
   isProd: str('NODE_ENV', 'development') === 'production',
   port: num('PORT', 10000),
   /**
-   * trader — the public trading app, price engine, sockets and settlement
-   * admin  — the operations console only, on its own origin
+   * trader  — the public trading app, price engine, sockets and settlement
+   * admin   — the operations console only, on its own origin
+   * sandbox — a throwaway market with the seed on display, no money anywhere
    *
-   * The two run as separate Render services off one codebase. The admin one
+   * These run as separate Render services off one codebase. The admin one
    * shares the database but never ships the trader bundle, runs no price
    * engine of its own (two engines would generate two different markets), and
    * issues its own session cookie scoped to its own host.
+   *
+   * Sandbox is the opposite: its own price engine, its own seeds, and no
+   * database and no payment provider at all. It exists so the determinism of
+   * the price engine can be inspected directly — every future tick visible —
+   * which is safe there precisely because nothing in it is real. assertEnv()
+   * refuses to start it if a database or payment credential is present, so the
+   * separation is enforced at boot rather than trusted.
    */
-  appMode: str('APP_MODE', 'trader') as 'trader' | 'admin',
+  appMode: str('APP_MODE', 'trader') as 'trader' | 'admin' | 'sandbox',
   /** Where the admin console reads live instrument and desk state from. */
   upstreamUrl: str('UPSTREAM_URL', 'https://fpesa.onrender.com').replace(/\/+$/, ''),
   publicUrl: str('PUBLIC_URL', '').replace(/\/+$/, ''),
@@ -250,10 +258,79 @@ export const env = {
   maxPositionShare: num('MAX_POSITION_SHARE', 0.25),
 
   supportTelegram: str('SUPPORT_TELEGRAM_URL', 'https://t.me/KRYPTONinv'),
+
+  sandbox: {
+    /**
+     * The only credential the sandbox has. There are no accounts in it — one
+     * passphrase opens one throwaway book held in memory, and restarting the
+     * service wipes every balance and position in it.
+     */
+    passphrase: str('SANDBOX_PASSPHRASE'),
+    /** Paper balance each session starts with, in the same shillings the real book uses. */
+    startingBalance: num('SANDBOX_STARTING_BALANCE', 100000),
+    /** How far ahead the oracle looks. 240 ticks at 250ms is the 60s duration. */
+    oracleTicks: num('SANDBOX_ORACLE_TICKS', 260),
+  },
 };
+
+/**
+ * The sandbox's whole safety argument, checked at boot.
+ *
+ * The sandbox shows every future tick of its own market. That is only harmless
+ * while there is nothing real inside it, so rather than documenting that and
+ * hoping, this refuses to start the process if anything real is within reach:
+ *
+ *  - a database URL or service key, which would let it read or write the live
+ *    ledger, including real balances;
+ *  - a payment credential, which would let it move actual money;
+ *  - a missing passphrase, which would leave the forecast open to the internet.
+ *
+ * A deployment that fails these is not a sandbox with a misconfiguration, it is
+ * a live service with a price oracle bolted on. Crashing is the correct
+ * outcome, and the message says which variable to remove.
+ */
+function assertSandboxIsolated(): void {
+  const leaks: string[] = [];
+  if (env.supabaseUrl) leaks.push('SUPABASE_URL');
+  if (env.supabaseServiceKey) leaks.push('SUPABASE_SERVICE_ROLE_KEY');
+  if (env.palpluss.apiKey) leaks.push('PALPLUSS_API_KEY');
+  if (env.intasend.secretKey) leaks.push('INTASEND_SECRET_KEY');
+  if (env.webhookToken) leaks.push('PALPLUSS_WEBHOOK_TOKEN / INTASEND_WEBHOOK_TOKEN');
+
+  if (leaks.length) {
+    throw new Error(
+      'APP_MODE=sandbox exposes every future price tick, so it must not be able ' +
+      'to reach real data or real money. Remove these from the sandbox service: ' +
+      leaks.join(', ') + '. Nothing in the sandbox needs them — it keeps its ' +
+      'book in memory and has no payment provider.'
+    );
+  }
+
+  if (!env.jwtSecret) {
+    throw new Error('JWT_SECRET is required in sandbox mode to sign its session cookie.');
+  }
+  if (!env.sandbox.passphrase) {
+    throw new Error(
+      'SANDBOX_PASSPHRASE is required: without it the price forecast would be ' +
+      'open to anyone who finds the URL.'
+    );
+  }
+  if (env.sandbox.passphrase.length < 12) {
+    throw new Error('SANDBOX_PASSPHRASE must be at least 12 characters.');
+  }
+
+  console.log(
+    '[sandbox] isolated: no database, no payment provider, in-memory book only'
+  );
+}
 
 /** Fail fast on a misconfigured production deploy rather than 500ing later. */
 export function assertEnv(): void {
+  if (env.appMode === 'sandbox') {
+    assertSandboxIsolated();
+    return;
+  }
+
   const missing: string[] = [];
   if (!env.supabaseUrl) missing.push('SUPABASE_URL');
   if (!env.supabaseServiceKey) missing.push('SUPABASE_SERVICE_ROLE_KEY');

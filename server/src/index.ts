@@ -24,12 +24,23 @@ import { webhookRouter } from './routes/webhook.routes.js';
 import { fairnessRouter } from './routes/fairness.routes.js';
 import { adminRouter } from './routes/admin.routes.js';
 import { internalRouter } from './routes/internal.routes.js';
+import { sandboxRouter } from './routes/sandbox.routes.js';
+import { sandboxBook } from './services/sandbox.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const isAdmin = env.appMode === 'admin';
-// The admin console is a different bundle on a different host; the trader
-// bundle is never served from it and vice versa.
-const clientDist = path.resolve(here, isAdmin ? '../../client-admin/dist' : '../../client/dist');
+const isSandbox = env.appMode === 'sandbox';
+/**
+ * Each mode serves exactly one bundle. The trader bundle is never served from
+ * the console or the sandbox and vice versa, so a screen that shows the seed
+ * cannot be reached from the host that takes deposits.
+ */
+const clientDist = path.resolve(
+  here,
+  isAdmin ? '../../client-admin/dist'
+    : isSandbox ? '../../client-sandbox/dist'
+      : '../../client/dist'
+);
 
 async function main(): Promise<void> {
   assertEnv();
@@ -64,7 +75,9 @@ async function main(): Promise<void> {
   app.use(cors({ origin: env.publicUrl || true, credentials: true }));
   app.use(express.json({ limit: '64kb' }));
   app.use(cookieParser());
-  app.use(attachUser);
+  // attachUser resolves a session against the users table. The sandbox has no
+  // users table and no database, so it carries its own cookie check instead.
+  if (!isSandbox) app.use(attachUser);
 
   app.get('/api/health', (_req, res) => {
     res.json({
@@ -75,12 +88,24 @@ async function main(): Promise<void> {
     });
   });
 
-  app.use('/api/auth', authRouter);
+  // No accounts exist in the sandbox, so the real auth surface — registration,
+  // login, password changes, all of it backed by a database it does not have —
+  // is not mounted there at all.
+  if (!isSandbox) app.use('/api/auth', authRouter);
+
   if (isAdmin) {
     // Operations console: the trading, wallet, social and webhook surfaces are
     // not mounted at all, so a stolen admin session cannot reach them and the
     // payment callback has exactly one address in the world.
     app.use('/api/admin', adminRouter);
+  } else if (isSandbox) {
+    /**
+     * The sandbox mounts its own API and nothing else — not even the public
+     * market surface, because it runs its own market and the live price feed is
+     * never started here. No wallet, no webhooks, no trades, no internal
+     * channel, and no database behind any of it.
+     */
+    app.use('/api/sandbox', sandboxRouter);
   } else {
     app.use('/api/market', marketRouter);
     app.use('/api/trades', tradeRouter);
@@ -158,7 +183,12 @@ async function main(): Promise<void> {
 
   const server = createServer(app);
 
-  if (!isAdmin) {
+  if (isSandbox) {
+    // Its own markets, seeded from this process's own random bytes at boot. The
+    // live price feed is deliberately not started: the sandbox neither reads it
+    // nor needs it, which is what makes it impossible to repoint at live.
+    sandboxBook.start();
+  } else if (!isAdmin) {
     await priceFeed.start();
     hub.attach(server);
     await tradingEngine.start();
@@ -172,14 +202,16 @@ async function main(): Promise<void> {
   }
 
   server.listen(env.port, () => {
+    const what = isAdmin ? 'operations console' : isSandbox ? 'sandbox' : 'trading app';
     console.log(
-      '[fpesa] ' + (isAdmin ? 'operations console' : 'trading app') +
+      '[fpesa] ' + what +
       ' listening on port ' + env.port + ' (' + env.nodeEnv + ')'
     );
   });
 
   const shutdown = (signal: string): void => {
     console.log('[fpesa] ' + signal + ' received, shutting down');
+    if (isSandbox) sandboxBook.stop();
     tradingEngine.stop();
     exposureGuard.stop();
     priceFeed.stop();

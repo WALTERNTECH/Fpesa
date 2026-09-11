@@ -3,6 +3,7 @@ import { db, pgErrorCode } from '../lib/db.js';
 import { priceFeed, SYMBOL } from './prices.js';
 import { getInstrument, instrumentOr } from './instruments.js';
 import { exposureGuard } from './exposure.js';
+import { executionStats } from './execution-stats.js';
 import { solvency } from './solvency.js';
 import { hub } from '../realtime/hub.js';
 
@@ -390,12 +391,17 @@ class TradingEngine {
     runIndex?: number;
   }): Promise<{ trade: PublicTrade; balance: number }> {
     const { userId, mode, direction, stake, durationSec } = params;
+    // Clock starts before any awaiting, so the measurement includes the desk
+    // check — which reads the database and is the slowest thing between a
+    // trader tapping and their entry price being taken.
+    const arrivedAt = Date.now();
 
     const instrument = getInstrument(params.symbol ?? SYMBOL);
     if (!instrument || !priceFeed.has(instrument.symbol)) {
       throw new TradeError('UNKNOWN_MARKET', 'That market is not available for trading.');
     }
     const symbol = instrument.symbol;
+    const priceOnArrival = priceFeed.current(symbol).price;
 
     if (!Number.isFinite(stake)) {
       throw new TradeError('INVALID_STAKE', 'Enter a valid trade amount.');
@@ -448,6 +454,12 @@ class TradingEngine {
       env.maxProfitMultiple,
       instrument.precision
     );
+
+    // Everything above this line is what stands between the tap and the price
+    // the trader is given; everything below is bookkeeping that cannot change
+    // it, because the entry is already fixed.
+    const stampedAt = Date.now();
+    const writeStartedAt = stampedAt;
 
     const { data, error } = await db.rpc('fpesa_place_trade', {
       p_user: userId,
@@ -511,6 +523,19 @@ class TradingEngine {
     const trade = toPublicTrade(result.trade);
     this.track(trade);
     this.scheduleSettlement(trade.id, durationSec * 1000, symbol);
+
+    // Recorded after the position is safely open, so measurement can never be
+    // what delays or breaks a trade. The drift is expressed against the barrier
+    // rather than in shillings: the same move means something different on an
+    // index at 6,500 and one at 1,000, but a share of the stop-out distance is
+    // comparable everywhere.
+    const barrier = mid / multiplier;
+    executionStats.record({
+      symbol,
+      stampMs: stampedAt - arrivedAt,
+      writeMs: Date.now() - writeStartedAt,
+      driftShareOfBarrier: barrier > 0 ? Math.abs(mid - priceOnArrival) / barrier : 0,
+    });
 
     return { trade, balance: Number(result.balance) };
   }

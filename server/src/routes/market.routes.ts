@@ -8,6 +8,7 @@ import { solvency } from '../services/solvency.js';
 import { analyseTrade } from '../lib/stats.js';
 import { env } from '../env.js';
 import { peekRate } from '../services/fx.js';
+import { executionStats } from '../services/execution-stats.js';
 
 export const marketRouter = Router();
 
@@ -252,6 +253,19 @@ marketRouter.get('/conditions', (_req, res) => {
     houseEdge: env.houseEdge,
     maxProfitMultiple: env.maxProfitMultiple,
   });
+});
+
+/**
+ * Execution timing: how long the server takes to stamp an entry price, and how
+ * far price moved while it was doing it.
+ *
+ * Public because it is a fairness figure, not a secret: it says how closely the
+ * price a trader was given matched the one on their screen when they tapped.
+ * See services/execution-stats.ts for why the drift is reported against the
+ * barrier rather than in shillings.
+ */
+marketRouter.get('/execution', (_req, res) => {
+  res.json(executionStats.summary());
 });
 
 marketRouter.get('/news', async (_req, res) => {

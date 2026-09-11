@@ -431,3 +431,17 @@ table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-
 .worst-row th, .worst-row td { border-top: 2px solid var(--line) !important; padding-top: 10px; }
 .reason .was { color: var(--subtle); font-size: 10.5px; }
 code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; }
+
+/* ----------------------------------------------------------- book stress */
+.book-top {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+.book-top .k { font-size: 11px; color: var(--subtle); }
+.book-top .book-v {
+  font-family: Sora, sans-serif;
+  font-size: 21px;
+  font-variant-numeric: tabular-nums;
+}
+.book-top small { font-size: 10.5px; }

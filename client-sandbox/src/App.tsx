@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Replay } from './Replay';
+import { Book } from './Book';
 
 /* ---------------------------------------------------------------- types */
 type Play = {
@@ -248,7 +249,7 @@ export function App(): JSX.Element {
   const [duration, setDuration] = useState(10);
   const [busy, setBusy] = useState(false);
   const [seedOpen, setSeedOpen] = useState(false);
-  const [view, setView] = useState<'live' | 'replay'>('live');
+  const [view, setView] = useState<'live' | 'replay' | 'book'>('live');
 
   // Held in a ref so the polling effect does not restart on every tick.
   const symbolRef = useRef<string | null>(null);
@@ -363,6 +364,9 @@ export function App(): JSX.Element {
           <button aria-pressed={view === 'replay'} onClick={() => setView('replay')}>
             Replay
           </button>
+          <button aria-pressed={view === 'book'} onClick={() => setView('book')}>
+            Book stress
+          </button>
         </nav>
 
         {error && <div className="err">{error}</div>}
@@ -383,6 +387,7 @@ export function App(): JSX.Element {
         </nav>
 
         {view === 'replay' && <Replay symbol={symbol} />}
+        {view === 'book' && <Book />}
 
         {view === 'live' && oracle && (
           <>

@@ -5,6 +5,7 @@ import { env } from '../env.js';
 import { ALLOWED_DURATIONS } from '../services/trading.js';
 import { sandboxBook, SandboxError } from '../services/sandbox.js';
 import { fetchEpochs, runReplay } from '../services/sandbox-replay.js';
+import { stressBook } from '../services/sandbox-book.js';
 
 /**
  * The sandbox API.
@@ -238,6 +239,40 @@ sandboxRouter.post('/replay', requireSandboxSession, (req, res) => {
   })
     .then((r) => res.json(r))
     .catch((err) => fail(res, err));
+});
+
+// ------------------------------------------------------------ book stress
+
+/**
+ * How much risk the solvency guard admits, and what a correlated win costs.
+ *
+ * Takes a hypothetical book rather than reading a real one — there is no
+ * database here — so any state can be tried, including ones the live book has
+ * never been in and hopefully never will be. See services/sandbox-book.ts for
+ * why this, and not a price feed, is what "large order impact" and "black swan
+ * survival" actually mean on a platform with no order book.
+ */
+sandboxRouter.post('/book', requireSandboxSession, (req, res) => {
+  const b = req.body as Record<string, unknown>;
+  const n = (v: unknown): number | undefined => {
+    const x = Number(v);
+    return Number.isFinite(x) ? x : undefined;
+  };
+  try {
+    res.json(
+      stressBook({
+        cash: n(b.cash),
+        operatorFloat: n(b.operatorFloat),
+        owed: n(b.owed),
+        atRisk: n(b.atRisk),
+        positionShare: n(b.positionShare),
+        maxProfitMultiple: n(b.maxProfitMultiple),
+        stake: n(b.stake),
+      })
+    );
+  } catch (err) {
+    fail(res, err);
+  }
 });
 
 // ----------------------------------------------------------------- trading

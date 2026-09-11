@@ -174,6 +174,27 @@ sandboxRouter.get('/oracle', requireSandboxSession, (req, res) => {
   }
 });
 
+/**
+ * Every market's next prices, for the operator dashboard.
+ *
+ * Same market, same seeds, same restriction as the rest of this service: it
+ * predicts the markets this process generates, which it can do exactly, and it
+ * says nothing whatever about fpesa.markets.
+ */
+sandboxRouter.get('/admin/predictions', requireSandboxSession, (_req, res) => {
+  try {
+    res.json({
+      ts: Date.now(),
+      markets: sandboxBook.predictions(),
+      durations: [...ALLOWED_DURATIONS],
+      houseEdge: env.houseEdge,
+      maxProfitMultiple: env.maxProfitMultiple,
+    });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
 // ------------------------------------------------------------------ replay
 
 /**

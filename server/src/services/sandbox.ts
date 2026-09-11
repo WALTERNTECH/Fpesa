@@ -522,6 +522,65 @@ class SandboxBook {
     return out;
   }
 
+  /**
+   * Every market's next prices at once, for the operator dashboard.
+   *
+   * The per-symbol oracle carries the whole path and all ten plays, which is far
+   * more than a five-row board needs. This is the same information thinned to
+   * what a dashboard reads: where each market is now, where it will be at each
+   * tradeable horizon, and the single best position available on it.
+   *
+   * Same restriction as everything else here — these are this process's own
+   * markets. It predicts them perfectly because it generated them.
+   */
+  predictions(): Array<{
+    symbol: string;
+    name: string;
+    volatility: number;
+    price: number;
+    tickMs: number;
+    /** The next ticks, for a sparkline. */
+    next: number[];
+    /** Price at each tradeable horizon, and the move to get there. */
+    horizons: Array<{ durationSec: number; price: number; movePct: number }>;
+    best: Play | null;
+  }> {
+    refuseOutsideSandbox();
+    return [...this.markets.values()].map((m) => {
+      const symbol = m.instrument.symbol;
+      const price = m.price();
+      const future = m.future(Math.round((60 * 1000) / TICK_MS));
+      const plays = this.plays(symbol);
+      const best = plays.length
+        ? plays.reduce((a, b) =>
+            b.profitPerUnit > a.profitPerUnit ||
+            (b.profitPerUnit === a.profitPerUnit && b.durationSec < a.durationSec)
+              ? b
+              : a
+          )
+        : null;
+
+      return {
+        symbol,
+        name: m.instrument.name,
+        volatility: m.instrument.volatility,
+        price,
+        tickMs: TICK_MS,
+        next: future.slice(0, 40).map((t) => t.price),
+        horizons: ALLOWED_DURATIONS.map((durationSec) => {
+          const at = future[Math.round((durationSec * 1000) / TICK_MS) - 1];
+          const target = at?.price ?? price;
+          return {
+            durationSec,
+            price: target,
+            movePct: Number((((target - price) / price) * 100).toFixed(4)),
+          };
+        }),
+        best,
+      };
+    });
+  }
+
   /** The oracle as the screen consumes it: the seed, the path, and the plays. */
   oracle(symbol: string): {
     symbol: string;

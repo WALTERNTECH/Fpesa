@@ -3,6 +3,7 @@ import { Replay } from './Replay';
 import { Book } from './Book';
 import { Conform } from './Conform';
 import { Forecast } from './Forecast';
+import { Predictions } from './Predictions';
 
 /* ---------------------------------------------------------------- types */
 type Play = {
@@ -251,7 +252,7 @@ export function App(): JSX.Element {
   const [duration, setDuration] = useState(10);
   const [busy, setBusy] = useState(false);
   const [seedOpen, setSeedOpen] = useState(false);
-  const [view, setView] = useState<'live' | 'replay' | 'book' | 'conform' | 'forecast'>('live');
+  const [view, setView] = useState<'live' | 'admin' | 'replay' | 'book' | 'conform' | 'forecast'>('live');
 
   // Held in a ref so the polling effect does not restart on every tick.
   const symbolRef = useRef<string | null>(null);
@@ -363,6 +364,9 @@ export function App(): JSX.Element {
           <button aria-pressed={view === 'live'} onClick={() => setView('live')}>
             Live sandbox
           </button>
+          <button aria-pressed={view === 'admin'} onClick={() => setView('admin')}>
+            Admin · next prices
+          </button>
           <button aria-pressed={view === 'forecast'} onClick={() => setView('forecast')}>
             Forecast
           </button>
@@ -398,6 +402,7 @@ export function App(): JSX.Element {
         {view === 'book' && <Book />}
         {view === 'conform' && <Conform symbol={symbol} />}
         {view === 'forecast' && <Forecast symbol={symbol} />}
+        {view === 'admin' && <Predictions />}
 
         {view === 'live' && oracle && (
           <>

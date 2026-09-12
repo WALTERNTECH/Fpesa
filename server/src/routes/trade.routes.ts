@@ -10,7 +10,7 @@ import { winRateAt as sharedWinRateAt } from '../lib/stats.js';
 import { multiplierFor } from '../services/trading.js';
 import { priceFeed, SYMBOL } from '../services/prices.js';
 import { getInstrument } from '../services/instruments.js';
-import { quoteDigital, digitalsEnabled, DIGITAL_WIN_RATES } from '../services/digital.js';
+import { quoteDigital, digitalsEnabled, DIGITAL_WIN_RATES, digitalEdgeFor } from '../services/digital.js';
 import {
   ALLOWED_DURATIONS,
   TradeError,
@@ -188,7 +188,9 @@ tradeRouter.get('/digital/quote', requireAuth, (req, res) => {
     return;
   }
 
-  const edge = req.user!.promoEdge ?? settings.houseEdge();
+  // The digital's own edge, not the scaled product's: the quote has to state
+  // the rate the position will actually be priced at when it is placed.
+  const edge = digitalEdgeFor(req.user!.promoEdge);
   const price = priceFeed.current(instrument.symbol).price;
 
   res.json({

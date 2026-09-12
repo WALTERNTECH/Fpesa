@@ -11,6 +11,7 @@ import { SupportButton } from './components/SupportButton';
 import { InstallPrompt } from './components/InstallPrompt';
 import { AuthModal } from './components/AuthModal';
 import { WalletModal } from './components/WalletModal';
+import { PassModal } from './components/PassModal';
 import { Toasts } from './components/Toasts';
 import { Footer } from './components/Footer';
 
@@ -40,6 +41,7 @@ export function App(): JSX.Element {
 
       {(modal === 'login' || modal === 'register') && <AuthModal mode={modal} />}
       {(modal === 'deposit' || modal === 'withdraw') && <WalletModal kind={modal} />}
+      {modal === 'pass' && <PassModal />}
     </>
   );
 }

@@ -147,6 +147,18 @@ export function Header(): JSX.Element {
                     <IconArrowUp size={15} />
                     Withdraw
                   </button>
+                  {/* Lives here rather than on the ticket: on the ticket it sat
+                      between the trader and the Buy button every single visit. */}
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      openModal('pass');
+                      setMenuOpen(false);
+                    }}
+                  >
+                    <IconRefresh size={15} />
+                    Trading pass
+                  </button>
                   <button
                     role="menuitem"
                     onClick={() => {

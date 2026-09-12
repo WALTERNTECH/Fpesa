@@ -35,7 +35,7 @@ export type Toast = {
   detail?: string;
 };
 
-type ModalKind = 'login' | 'register' | 'deposit' | 'withdraw' | null;
+type ModalKind = 'login' | 'register' | 'deposit' | 'withdraw' | 'pass' | null;
 
 type AppValue = {
   ready: boolean;

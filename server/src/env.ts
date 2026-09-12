@@ -268,6 +268,19 @@ export const env = {
   digitalEnabled: bool('DIGITAL_ENABLED', false),
   /** Win rate the digital ticket defaults to. The payout follows from it. */
   digitalWinRate: num('DIGITAL_WIN_RATE', 0.7),
+  /**
+   * The digital product's own house edge, held separately from the scaled one
+   * and deliberately lower.
+   *
+   * On a digital the edge comes straight off the advertised payout — at an 11%
+   * edge a 70% ticket pays 27%, which reads as a bad deal next to losing the
+   * whole stake, and a product nobody takes earns nothing. At 5% the same
+   * ticket pays 36% and the house still books 5% of every stake. It is also a
+   * cleaner 5% than the scaled product's: a digital's realised edge is exactly
+   * this number, because the outcome is one comparison rather than a path that
+   * can stop out early.
+   */
+  digitalEdge: num('DIGITAL_EDGE', 0.05),
 
   sandbox: {
     /**

@@ -121,3 +121,28 @@ export function isOfferedWinRate(v: number): boolean {
 export function digitalsEnabled(): boolean {
   return env.digitalEnabled;
 }
+
+/** Never below this, so the house cannot end up running the product at cost. */
+const MIN_EDGE = 0.005;
+
+/**
+ * The edge a digital is priced at for one trader.
+ *
+ * Held separately from the scaled product's because on a digital the edge is
+ * visible: it comes straight off the payout the trader is quoted before they
+ * commit. The scaled product can carry 11% because it sits inside the entry
+ * price; the same 11% here turns a 70% ticket into a 27% payout against losing
+ * the whole stake, which looks far worse than it is and gets the product
+ * ignored. A product nobody takes earns nothing.
+ *
+ * A trading pass still applies when it beats this rate, so the pass stays worth
+ * buying on both products. Floored either way — the house takes less on this
+ * product, never nothing.
+ */
+export function digitalEdgeFor(promoEdge?: number | null): number {
+  const base = Math.min(Math.max(env.digitalEdge, MIN_EDGE), 0.2);
+  if (typeof promoEdge === 'number' && Number.isFinite(promoEdge) && promoEdge < base) {
+    return Math.max(promoEdge, MIN_EDGE);
+  }
+  return base;
+}

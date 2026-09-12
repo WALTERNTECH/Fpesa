@@ -3,7 +3,6 @@ import { useApp } from '../store/app';
 import { usd, durationLabel, price as fmtPrice } from '../lib/format';
 import { OpenPositions } from './OpenPositions';
 import { IconArrowDown, IconArrowUp } from './Icons';
-import { PassCard } from './PassCard';
 
 export function TradePanel(): JSX.Element {
   const {
@@ -151,14 +150,16 @@ export function TradePanel(): JSX.Element {
             </div>
           </div>
 
-          {/* Two products, same house edge, different shape. Named by what the
-              trader actually experiences rather than by the jargon, because the
-              choice is between win-often-small and win-rarely-big. */}
+          {/* Two products, named by what the trader experiences rather than by
+              the jargon: the choice is between win-often-small and
+              win-rarely-big. They no longer carry the same edge — the digital
+              is priced lower, because on that product the edge is subtracted
+              from a payout the trader can see. */}
           {config.digitalEnabled && (
             <div className="field">
               <div className="field-label">
                 <span>Payout style</span>
-                <span className="hint">Same cost either way</span>
+                <span className="hint">Pick how you get paid</span>
               </div>
               <div className="prod-switch" role="group" aria-label="Payout style">
                 <button
@@ -204,39 +205,22 @@ export function TradePanel(): JSX.Element {
           )}
 
           {isDigital ? (
-            /* A digital's terms are fixed the moment it opens: where the line
-               sits, what a win pays, and that a loss costs the whole stake.
-               All three are shown before the trader commits. */
+            /* Two rows, because that is the whole product: what a win pays and
+               what a loss costs. The two barriers are on the Buy and Sell
+               buttons, where the trader is looking when they pick a side, so
+               repeating them here was noise. */
             <div className="terms">
               <div className="term">
                 <span className="k">Win pays</span>
                 <span className="v tnum up">
                   {digitalTerms
-                    ? '+' + usd(digitalWin) + ' · ' + digitalTerms.payoutPctOfStake.toFixed(1) + '%'
+                    ? '+' + usd(digitalWin) + ' · ' + digitalTerms.payoutPctOfStake.toFixed(0) + '%'
                     : '—'}
                 </span>
               </div>
               <div className="term">
-                <span className="k">A loss costs</span>
-                <span className="v tnum down">{usd(stakeAmount || 0)} — the whole stake</span>
-              </div>
-              <div className="term">
-                <span className="k">Buy wins above</span>
-                <span className="v tnum">
-                  {digitalTerms ? fmtPrice(digitalTerms.BUY.barrier) : '—'}
-                </span>
-              </div>
-              <div className="term">
-                <span className="k">Sell wins below</span>
-                <span className="v tnum">
-                  {digitalTerms ? fmtPrice(digitalTerms.SELL.barrier) : '—'}
-                </span>
-              </div>
-              <div className="term">
-                <span className="k">Expected result</span>
-                <span className="v tnum down">
-                  {digitalTerms ? digitalTerms.expectedPctOfStake.toFixed(2) + '% of stake' : '—'}
-                </span>
+                <span className="k">If it loses</span>
+                <span className="v tnum down">{usd(stakeAmount || 0)}</span>
               </div>
             </div>
           ) : (
@@ -270,19 +254,17 @@ export function TradePanel(): JSX.Element {
           </div>
           )}
 
-          {/* The appealing half of this product is "you win most of the time",
-              so the half that corrects it belongs on the same card, in the same
-              size type — not in a terms page. Winning more often is not the
-              same as coming out ahead, and at any spread above zero the
-              expected result is still negative. Do not soften this. */}
+          {/* One line, because a wall of text reads as a disclaimer and gets
+              skipped. It still has to do the honest work: winning most of the
+              time is not the same as coming out ahead, and saying so plainly is
+              what keeps "win 70 in 100" from being a false promise. Shorten the
+              wording if you like; do not drop the second half. */}
           {isDigital && digitalTerms && (
-            <div className="digital-note">
-              You win about <b>{digitalTerms.winRatePct} out of every 100 trades</b> — but a{' '}
-              {digitalTerms.winRatePct}% win rate is <b>not</b> a {digitalTerms.winRatePct}% chance
-              of profit. The losses are bigger than the wins by design, so the expected result
-              stays negative at {digitalTerms.expectedPctOfStake.toFixed(2)}% of stake. It changes
-              how often you win, not whether you come out ahead.
-            </div>
+            <p className="digital-note">
+              Wins about <b>{digitalTerms.winRatePct} in 100</b> — more often, not more overall.
+              Each trade still costs {Math.abs(digitalTerms.expectedPctOfStake).toFixed(0)}% on
+              average.
+            </p>
           )}
 
           {onPromo && user?.promoUntil && (
@@ -295,8 +277,6 @@ export function TradePanel(): JSX.Element {
               })}
             </div>
           )}
-
-          <PassCard />
 
           {/* Reads every market's realised volatility, picks the one where
               this duration is least likely to stop out, and opens the batch

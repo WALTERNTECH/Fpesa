@@ -5,7 +5,7 @@ import { getInstrument, instrumentOr } from './instruments.js';
 import { exposureGuard } from './exposure.js';
 import { executionStats } from './execution-stats.js';
 import { settings } from './settings.js';
-import { quoteDigital, digitalsEnabled, isOfferedWinRate } from './digital.js';
+import { quoteDigital, digitalsEnabled, isOfferedWinRate, digitalEdgeFor } from './digital.js';
 import { solvency } from './solvency.js';
 import { hub } from '../realtime/hub.js';
 
@@ -499,11 +499,14 @@ class TradingEngine {
     // A promo's reduced spread if this trader holds one, otherwise the
     // platform's live edge. Bounded here as well as at every write, because a
     // bad value would mis-price a real position.
-    const edge =
+    const isDigital = params.tradeType === 'DIGITAL';
+    const scaledEdge =
       typeof params.edge === 'number' && params.edge >= 0 && params.edge <= 0.2
         ? params.edge
         : settings.houseEdge();
-    const isDigital = params.tradeType === 'DIGITAL';
+    // A digital is priced off its own, lower edge — see digitalEdgeFor. The
+    // trader's pass still applies to it when the pass is the better rate.
+    const edge = isDigital ? digitalEdgeFor(params.edge ?? null) : scaledEdge;
     if (isDigital) {
       if (!digitalsEnabled()) {
         throw new TradeError('DIGITAL_OFF', 'That product is not available yet.', 503);

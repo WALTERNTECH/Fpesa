@@ -2,6 +2,7 @@ import { useApp } from './store/app';
 import { Header } from './components/Header';
 import { NewsTicker } from './components/NewsTicker';
 import { PriceChart } from './components/PriceChart';
+import { DigitTicker } from './components/DigitTicker';
 import { TradePanel } from './components/TradePanel';
 import { TradeBar } from './components/TradeBar';
 import { MarketPicker } from './components/MarketPicker';
@@ -26,7 +27,12 @@ export function App(): JSX.Element {
       <main className="app">
         <MarketPicker />
         <div className="desk">
-          <PriceChart />
+          {/* The chart, then the digits it resolves to — the digit strip sits
+              directly under the price because it is what the ticket reads. */}
+          <div className="chart-col">
+            <PriceChart />
+            <DigitTicker />
+          </div>
           <TradePanel />
         </div>
         <TradeHistory />

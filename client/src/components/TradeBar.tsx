@@ -15,11 +15,12 @@ export function TradeBar(): JSX.Element {
   const {
     user, stake, duration, config, accountMode, balance,
     tradeBusy, canTrade, openModal, desk, setAccountMode,
-    submitTrade, tradeType,
+    submitTrade, digit, digitsQuote,
   } = useApp();
 
-  const isDigits =
-    config.digitsEnabled && (tradeType === 'DIGITS_OVER' || tradeType === 'DIGITS_UNDER');
+  const isDigits = config.digitsEnabled;
+  const overTicket = digitsQuote?.over.find((t) => t.digit === digit) ?? null;
+  const underTicket = digitsQuote?.under.find((t) => t.digit === digit) ?? null;
 
   if (!user) {
     return (
@@ -74,17 +75,23 @@ export function TradeBar(): JSX.Element {
         <span className="exp tnum">{durationLabel(duration)}</span>
       </button>
 
-      {/* Over/Under is decided by the digit, not by a side, so the bar offers
-          the one action the ticket actually has. */}
+      {/* The side is the trade, so the bar carries both sides rather than a
+          toggle set somewhere else and one button here. */}
       {isDigits ? (
         <div className="bar-sides">
           <button
             className="bar-side buy"
-            style={{ gridColumn: '1 / -1' }}
-            disabled={tradeBusy !== null || !canTrade}
-            onClick={() => void submitTrade('BUY')}
+            disabled={tradeBusy !== null || !canTrade || !overTicket}
+            onClick={() => void submitTrade('BUY', 'OVER')}
           >
-            {tradeBusy ? 'Placing…' : 'Trade'}
+            {tradeBusy ? 'Placing…' : 'Over ' + digit}
+          </button>
+          <button
+            className="bar-side sell"
+            disabled={tradeBusy !== null || !canTrade || !underTicket}
+            onClick={() => void submitTrade('BUY', 'UNDER')}
+          >
+            {tradeBusy ? 'Placing…' : 'Under ' + digit}
           </button>
         </div>
       ) : (

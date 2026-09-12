@@ -97,6 +97,12 @@ type AppValue = {
   digitsQuote: DigitsQuote | null;
   /** The picked ticket's row of that quote, or null until it arrives. */
   digitTerms: DigitTicket | null;
+  /**
+   * Last digit of every recent tick, oldest first. This is the thing an
+   * Over/Under trader is actually reading — the price level is incidental —
+   * so it is kept here rather than derived in one component.
+   */
+  digitHistory: number[];
   tradeBusy: Direction | null;
   tradeError: string | null;
   setTradeError: (message: string | null) => void;
@@ -114,7 +120,7 @@ type AppValue = {
   autoScan: ScanResult | null;
   autoStage: 'scanning' | 'chosen' | 'placing';
   startAuto: () => Promise<void>;
-  submitTrade: (direction: Direction) => Promise<void>;
+  submitTrade: (direction: Direction, pick?: 'OVER' | 'UNDER') => Promise<void>;
 
   modal: ModalKind;
   openModal: (kind: ModalKind) => void;
@@ -204,6 +210,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
   const [digitalQuote, setDigitalQuote] = useState<DigitalQuote | null>(null);
   const [digit, setDigit] = useState<number>(5);
   const [digitsQuote, setDigitsQuote] = useState<DigitsQuote | null>(null);
+  const [digitHistory, setDigitHistory] = useState<number[]>([]);
   const [tradeBusy, setTradeBusy] = useState<Direction | null>(null);
   const [tradeError, setTradeError] = useState<string | null>(null);
   const [desk, setDesk] = useState<DeskState>(DEFAULT_CONFIG.desk);
@@ -219,6 +226,11 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
   // Read inside the socket handler, which is registered once and must not be
   // torn down and rebuilt on every market switch.
   const symbolRef = useRef(DEFAULT_CONFIG.symbol);
+  /* Read inside the socket handler, which is registered once. The digit is the
+     last decimal at the instrument's own precision, so a 3-decimal market and a
+     2-decimal one do not read the same tick the same way. */
+  const precisionRef = useRef(2);
+  const digitsBuf = useRef<number[]>([]);
   const toastId = useRef(0);
   const flashTimer = useRef<number | null>(null);
 
@@ -347,6 +359,16 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
         // it would put another instrument's price on this chart for a frame.
         if (msg.symbol !== symbolRef.current) return;
         setPrice(msg.price);
+        {
+          const p = Math.pow(10, precisionRef.current);
+          const d = Math.abs(Math.round(msg.price * p)) % 10;
+          const buf = digitsBuf.current;
+          buf.push(d);
+          // A rolling window: enough for a stable distribution, bounded so a
+          // long session cannot grow it without limit.
+          if (buf.length > 1000) buf.splice(0, buf.length - 1000);
+          setDigitHistory(buf.slice());
+        }
         if (msg.price !== lastPrice.current) {
           setTickDir(msg.price > lastPrice.current ? 'up' : 'down');
           lastPrice.current = msg.price;
@@ -574,6 +596,12 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
   const multiplier =
     instrument?.multipliers?.[String(duration)] ?? config.multipliers[String(duration)] ?? 1000;
 
+  /* The socket handler is registered once, so it reads precision from a ref
+     rather than from a closure over this render. */
+  useEffect(() => {
+    precisionRef.current = instrument?.precision ?? 2;
+  }, [instrument?.precision]);
+
   // Validated once here so the panel and the sticky bar cannot disagree about
   // whether the current ticket is placeable.
   const stakeAmount = Number(stake);
@@ -681,7 +709,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       : null;
 
   const submitTrade = useCallback(
-    async (direction: Direction) => {
+    async (direction: Direction, pick?: 'OVER' | 'UNDER') => {
       if (!user) {
         setModal('login');
         return;
@@ -698,7 +726,11 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
           // Only sent when the product is actually on offer, so a stale client
           // cannot ask for a digital the server has since switched off.
           ...(digitalOn ? { tradeType: 'DIGITAL', winRate } : {}),
-          ...(digitsOn ? { tradeType, digit } : {}),
+          // The pick rides on the call so Over and Under can be two buttons
+          // rather than a toggle the trader has to set first.
+          ...(digitsOn || pick
+            ? { tradeType: pick ? 'DIGITS_' + pick : tradeType, digit }
+            : {}),
         });
         setOpenTrades((prev) => [...prev, res.trade]);
         setUser((prev) => {
@@ -791,6 +823,9 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       if (next === symbolRef.current) return;
       symbolRef.current = next;
       setSymbolState(next);
+      // Another market's digits say nothing about this one.
+      digitsBuf.current = [];
+      setDigitHistory([]);
       setTradeError(null);
       marketSocket.watch(next);
       try {
@@ -859,6 +894,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       setDigit,
       digitsQuote,
       digitTerms,
+      digitHistory,
       tradeBusy,
       tradeError,
       setTradeError,
@@ -889,7 +925,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       instruments, symbol, setSymbol, instrument, multiplier,
       balance, rate, toUsd, toKes,
       openTrades, stake, duration, tradeBusy, tradeError, stakeIssue,
-      tradeType, winRate, digitalQuote, digitalTerms, digit, digitsQuote, digitTerms,
+      tradeType, winRate, digitalQuote, digitalTerms, digit, digitsQuote, digitTerms, digitHistory,
       canTrade, stakeCeiling, submitTrade, desk, autoRunCount, run, autoBusy,
       autoScan, autoStage, startAuto, modal, openModal, closeModal, login, register,
       logout, refreshUser, resetDemo, toasts, pushToast,

@@ -5,7 +5,6 @@ import {
   LineStyle,
   createChart,
   type IChartApi,
-  type IPriceLine,
   type ISeriesApi,
   type LineData,
   type UTCTimestamp,
@@ -26,7 +25,7 @@ const TIMEFRAMES: Array<{ id: Timeframe; label: string; seconds: number }> = [
 
 
 export function PriceChart(): JSX.Element {
-  const { price, tickDir, quote, openTrades, connected, symbol, instrument } = useApp();
+  const { price, tickDir, quote, connected, symbol, instrument } = useApp();
   const precision = instrument?.precision ?? 2;
   const [timeframe, setTimeframe] = useState<Timeframe>('5s');
 
@@ -35,7 +34,6 @@ export function PriceChart(): JSX.Element {
   const chartRef = useRef<IChartApi | null>(null);
   const areaRef = useRef<ISeriesApi<'Area'> | null>(null);
   const barRef = useRef<Candle | null>(null);
-  const linesRef = useRef<Map<string, IPriceLine>>(new Map());
 
   const stepSeconds = useMemo(
     () => TIMEFRAMES.find((t) => t.id === timeframe)?.seconds ?? 5,
@@ -97,7 +95,6 @@ export function PriceChart(): JSX.Element {
     });
 
     return () => {
-      linesRef.current.clear();
       chart.remove();
       chartRef.current = null;
       areaRef.current = null;
@@ -169,59 +166,10 @@ export function PriceChart(): JSX.Element {
     });
   }, [stepSeconds, symbol]);
 
-  // ------------------------------------------- entry markers for live trades
-  useEffect(() => {
-    const series = areaRef.current;
-    if (!series) return;
-    const lines = linesRef.current;
-
-    // Positions on other markets have entry prices from a different scale;
-    // drawing them here would put lines nowhere near this chart's range.
-    const shown = openTrades.filter((t) => t.symbol === symbol);
-
-    const wanted = new Set<string>();
-    for (const t of shown) {
-      wanted.add(t.id);
-      wanted.add(t.id + ':stop');
-    }
-    for (const [id, line] of lines) {
-      if (!wanted.has(id)) {
-        try {
-          series.removePriceLine(line);
-        } catch {
-          // Series may already have dropped it during a view swap.
-        }
-        lines.delete(id);
-      }
-    }
-
-    for (const trade of shown) {
-      if (lines.has(trade.id)) continue;
-      const line = series.createPriceLine({
-        price: trade.entryPrice,
-        color: trade.direction === 'BUY' ? '#00a870' : '#e5384a',
-        lineWidth: 1,
-        lineStyle: LineStyle.Dashed,
-        axisLabelVisible: true,
-        title: trade.direction + ' ' + trade.stake,
-      });
-      lines.set(trade.id, line);
-
-      // The level the position closes itself at, so the trader can see how
-      // much room is left rather than inferring it from the running number.
-      if (trade.stopOutPrice !== null) {
-        const stop = series.createPriceLine({
-          price: trade.stopOutPrice,
-          color: '#e5384a',
-          lineWidth: 1,
-          lineStyle: LineStyle.Dotted,
-          axisLabelVisible: true,
-          title: 'stop out',
-        });
-        lines.set(trade.id + ':stop', stop);
-      }
-    }
-  }, [openTrades, symbol]);
+  /* No entry or stop-out lines are drawn. On Over/Under there is no level to
+     draw — the trade is decided by the closing digit, not by where price sits —
+     so a dashed line across the chart marked BUY was describing a mechanic this
+     product does not have. */
 
   const change = quote ? price - quote.dayOpen : 0;
   const changePct = quote && quote.dayOpen ? (change / quote.dayOpen) * 100 : 0;

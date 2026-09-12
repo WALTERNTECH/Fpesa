@@ -2090,6 +2090,132 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .digit:disabled { opacity: 0.3; }
 .digit-place { margin-top: 12px; }
 
+/* The chart and the digit strip read as one column, since the strip is what
+   the ticket actually resolves against. */
+.chart-col { display: flex; flex-direction: column; gap: var(--gutter); min-width: 0; }
+
+/* ------------------------------------------------------- last-digit ticker */
+.digits-card { min-width: 0; }
+.digits-body { padding-top: 12px; padding-bottom: 14px; }
+
+/* What just happened, newest on the right. */
+.digit-strip {
+  display: flex;
+  gap: 4px;
+  overflow: hidden;
+  margin-bottom: 14px;
+  min-height: 30px;
+  align-items: center;
+}
+.digit-wait { font-size: 11.5px; color: var(--subtle); }
+.digit-strip .ds {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--surface-sunk);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+/* The tick that just landed. */
+.digit-strip .ds.now {
+  background: var(--blue);
+  color: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+/* How the digits have landed over the window. Even bars are the product
+   working as advertised, so they are worth showing rather than summarising. */
+.digit-bars {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 4px;
+  align-items: end;
+}
+.db { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.db-pct { font-size: 9.5px; color: var(--subtle); }
+.db-track {
+  width: 100%;
+  height: 56px;
+  display: flex;
+  align-items: flex-end;
+  background: var(--surface-sunk);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.db-track i { display: block; width: 100%; background: var(--line-strong, #c7d0de); border-radius: 5px; }
+.db-d { font-size: 11px; font-weight: 650; color: var(--muted); }
+.db.now .db-track i { background: var(--blue); }
+.db.now .db-d { color: var(--ink); }
+.db.now .db-pct { color: var(--blue); font-weight: 700; }
+
+/* ------------------------------------------------------------ stake stepper */
+.stake-row { display: grid; grid-template-columns: 46px 1fr 46px; gap: 6px; }
+.stake-step {
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+  color: var(--ink);
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1;
+  transition: background 0.12s var(--ease);
+}
+.stake-step:disabled { opacity: 0.35; }
+.stake-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+  border: 1.5px solid transparent;
+}
+.stake-row.invalid .stake-input { border-color: var(--down); }
+.stake-input .cur { font-size: 15px; font-weight: 650; color: var(--muted); }
+.stake-input input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 13px 0;
+  background: none;
+  border: 0;
+  font-size: 17px;
+  font-weight: 650;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.stake-input input:focus { outline: none; }
+
+/* ---------------------------------------------------- Over / Under buttons */
+.ou-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.ou {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 13px 8px;
+  border-radius: var(--r);
+  color: #fff;
+  transition: filter 0.12s var(--ease), transform 0.06s var(--ease);
+}
+.ou:active { transform: translateY(1px); }
+.ou:disabled { opacity: 0.45; }
+.ou.buy { background: var(--up); }
+.ou.sell { background: var(--down); }
+.ou-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.ou-pay { font-size: 14px; font-weight: 650; opacity: 0.95; }
+.ou small { font-size: 10px; opacity: 0.8; }
+
 /* The struck-through original, so the saving reads at a glance. */
 .term .was {
   color: var(--subtle);

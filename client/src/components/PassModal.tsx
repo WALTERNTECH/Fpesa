@@ -125,14 +125,14 @@ export function PassModal(): JSX.Element | null {
             </button>
           )}
 
+          {/* One correction, not four restatements of it. The pass sells a win
+              rate, so the only thing that has to be said back is that a better
+              win rate is not the same as making money. */}
           <p className="pass-note">
-            The pass lowers what each trade costs you to open, from{' '}
-            {(view.normalEdge * 100).toFixed(0)}% of your stake to{' '}
-            {(view.plans[0]!.edge * 100).toFixed(0)}%. More of your trades finish in
-            profit and your balance lasts longer.{' '}
-            <b>It does not make trading profitable</b> — the odds stay against you on
-            every trade, and on a small balance a pass can cost more than it saves. It
-            buys you more trades and more wins, not a better outcome.
+            Cuts your cost to open from {(view.normalEdge * 100).toFixed(0)}% of stake to{' '}
+            {(view.plans[0]!.edge * 100).toFixed(0)}%, so more trades finish in profit and
+            your balance lasts longer. It buys more trades and more wins —{' '}
+            <b>not a winning strategy</b>.
           </p>
         </>
       )}

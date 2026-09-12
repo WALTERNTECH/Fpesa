@@ -4,7 +4,6 @@ import {
   CrosshairMode,
   LineStyle,
   createChart,
-  type CandlestickData,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
@@ -24,17 +23,16 @@ const TIMEFRAMES: Array<{ id: Timeframe; label: string; seconds: number }> = [
   { id: '5m', label: '5m', seconds: 300 },
 ];
 
-type ViewMode = 'candles' | 'area';
+
 
 export function PriceChart(): JSX.Element {
   const { price, tickDir, quote, openTrades, connected, symbol, instrument } = useApp();
   const precision = instrument?.precision ?? 2;
   const [timeframe, setTimeframe] = useState<Timeframe>('5s');
-  const [view, setView] = useState<ViewMode>('candles');
+
 
   const boxRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const areaRef = useRef<ISeriesApi<'Area'> | null>(null);
   const barRef = useRef<Candle | null>(null);
   const linesRef = useRef<Map<string, IPriceLine>>(new Map());
@@ -90,16 +88,6 @@ export function PriceChart(): JSX.Element {
 
     chartRef.current = chart;
 
-    candleRef.current = chart.addCandlestickSeries({
-      upColor: '#00a870',
-      downColor: '#e5384a',
-      borderUpColor: '#00a870',
-      borderDownColor: '#e5384a',
-      wickUpColor: 'rgba(0, 168, 112, 0.6)',
-      wickDownColor: 'rgba(229, 56, 74, 0.6)',
-      priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
-    });
-
     areaRef.current = chart.addAreaSeries({
       lineColor: '#0b4fd8',
       lineWidth: 2,
@@ -113,7 +101,6 @@ export function PriceChart(): JSX.Element {
       linesRef.current.clear();
       chart.remove();
       chartRef.current = null;
-      candleRef.current = null;
       areaRef.current = null;
     };
   }, []);
@@ -122,15 +109,8 @@ export function PriceChart(): JSX.Element {
   // 2 shows a flat line where there is actually movement.
   useEffect(() => {
     const format = { type: 'price' as const, precision, minMove: Math.pow(10, -precision) };
-    candleRef.current?.applyOptions({ priceFormat: format });
     areaRef.current?.applyOptions({ priceFormat: format });
   }, [precision]);
-
-  // ------------------------------------------------------------- swap views
-  useEffect(() => {
-    candleRef.current?.applyOptions({ visible: view === 'candles' });
-    areaRef.current?.applyOptions({ visible: view === 'area' });
-  }, [view]);
 
   // -------------------------------------------------------- load timeframe
   useEffect(() => {
@@ -143,19 +123,11 @@ export function PriceChart(): JSX.Element {
         );
         if (cancelled) return;
 
-        const bars: CandlestickData[] = res.candles.map((c) => ({
-          time: c.time as UTCTimestamp,
-          open: c.open,
-          high: c.high,
-          low: c.low,
-          close: c.close,
-        }));
         const line: LineData[] = res.candles.map((c) => ({
           time: c.time as UTCTimestamp,
           value: c.close,
         }));
 
-        candleRef.current?.setData(bars);
         areaRef.current?.setData(line);
         barRef.current = res.candles[res.candles.length - 1] ?? null;
         chartRef.current?.timeScale().scrollToRealTime();
@@ -194,20 +166,13 @@ export function PriceChart(): JSX.Element {
             };
 
       barRef.current = next;
-      candleRef.current?.update({
-        time: next.time as UTCTimestamp,
-        open: next.open,
-        high: next.high,
-        low: next.low,
-        close: next.close,
-      });
       areaRef.current?.update({ time: next.time as UTCTimestamp, value: next.close });
     });
   }, [stepSeconds, symbol]);
 
   // ------------------------------------------- entry markers for live trades
   useEffect(() => {
-    const series = view === 'candles' ? candleRef.current : areaRef.current;
+    const series = areaRef.current;
     if (!series) return;
     const lines = linesRef.current;
 
@@ -257,7 +222,7 @@ export function PriceChart(): JSX.Element {
         lines.set(trade.id + ':stop', stop);
       }
     }
-  }, [openTrades, view, symbol]);
+  }, [openTrades, symbol]);
 
   const change = quote ? price - quote.dayOpen : 0;
   const changePct = quote && quote.dayOpen ? (change / quote.dayOpen) * 100 : 0;
@@ -288,17 +253,6 @@ export function PriceChart(): JSX.Element {
         </div>
 
         <div className="chart-switches">
-          <div className="tf-switch" role="group" aria-label="Chart type">
-            <button
-              onClick={() => setView('candles')}
-              aria-pressed={view === 'candles'}
-            >
-              Candles
-            </button>
-            <button onClick={() => setView('area')} aria-pressed={view === 'area'}>
-              Area
-            </button>
-          </div>
           <div className="tf-switch" role="group" aria-label="Timeframe">
             {TIMEFRAMES.map((tf) => (
               <button

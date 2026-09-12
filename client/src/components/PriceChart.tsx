@@ -94,7 +94,6 @@ export function PriceChart(): JSX.Element {
       topColor: 'rgba(11, 79, 216, 0.22)',
       bottomColor: 'rgba(11, 79, 216, 0.01)',
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
-      visible: false,
     });
 
     return () => {

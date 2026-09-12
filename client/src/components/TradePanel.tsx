@@ -417,16 +417,15 @@ export function TradePanel(): JSX.Element {
           {isDigits && (
             <button
               className="btn btn-primary btn-block digit-place"
-              disabled={tradeBusy !== null || deskClosed || (Boolean(user) && !canTrade) || !digitTerms}
+              /* Not gated on the quote having arrived: the pick is already made
+                 and the server prices it again on placement anyway. Gating here
+                 turned a slow or failed quote into a permanently dead button. */
+              disabled={tradeBusy !== null || deskClosed || (Boolean(user) && !canTrade)}
               onClick={() => void submitTrade('BUY')}
             >
               {tradeBusy
                 ? 'Placing…'
-                : digitTerms
-                ? pick === 'OVER'
-                  ? 'Trade — over ' + digitTerms.digit
-                  : 'Trade — under ' + digitTerms.digit
-                : 'Loading…'}
+                : (pick === 'OVER' ? 'Trade — over ' : 'Trade — under ') + digit}
             </button>
           )}
 

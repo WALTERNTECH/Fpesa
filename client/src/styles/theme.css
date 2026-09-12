@@ -2013,6 +2013,54 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 }
 .promo-live b { font-weight: 700; letter-spacing: 0.02em; }
 
+/* The two products. Each side carries a line saying what it actually means,
+   which is the point of offering the choice at all — "digital" and "scaled"
+   tell a trader nothing about which one they want. */
+.prod-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 3px;
+  background: var(--surface-sunk);
+  border-radius: 11px;
+}
+.prod-switch button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 8px;
+  border-radius: 8px;
+  color: var(--muted);
+  text-align: left;
+  transition: all 0.15s var(--ease);
+}
+.prod-switch button b { font-size: 13px; font-weight: 650; }
+.prod-switch button small {
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--subtle);
+}
+.prod-switch button[aria-pressed='true'] {
+  background: var(--white);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Sits directly under the digital's terms, in body type rather than fine
+   print. The appealing half of this product is on the same card, so the
+   half that corrects it has to be as readable as the claim. */
+.digital-note {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+.digital-note b { color: var(--ink); font-weight: 650; }
+
 /* The struck-through original, so the saving reads at a glance. */
 .term .was {
   color: var(--subtle);

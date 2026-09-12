@@ -282,7 +282,13 @@ export function TradeHistory(): JSX.Element {
                         </span>
                         <span className="hr-mkt">
                           <span className="s">{t.symbol}</span>
-                          <span className="d">{t.durationSec}s</span>
+                          {/* Which product settled this row. Without it a
+                              digital and a scaled trade look identical here,
+                              and they are paid on completely different terms. */}
+                          <span className="d">
+                            {t.durationSec}s
+                            {t.tradeType === 'DIGITAL' && ' · fixed'}
+                          </span>
                         </span>
                         <span className="hr-px tnum">
                           {t.entryPrice}

@@ -31,6 +31,8 @@ export type TradeRow = {
   take_profit_price: string | number | null;
   max_profit: string | number | null;
   close_reason: 'EXPIRY' | 'STOP_OUT' | 'TAKE_PROFIT' | null;
+  trade_type: 'SCALED' | 'DIGITAL';
+  barrier_price: string | number | null;
   run_id?: string | null;
 };
 
@@ -55,6 +57,15 @@ export type PublicTrade = {
   takeProfitPrice: number | null;
   maxProfit: number;
   closeReason: TradeRow['close_reason'];
+  /** Which product this is. A digital is decided against `barrierPrice`. */
+  tradeType: TradeRow['trade_type'];
+  /**
+   * The level a digital is settled against, fixed when it opened. Null on a
+   * scaled position, which has no barrier — it is paid on the size of the move.
+   * Without this the client cannot show a digital's terms after it is placed,
+   * nor tell the two products apart in history.
+   */
+  barrierPrice: number | null;
 };
 
 export function toPublicTrade(row: TradeRow): PublicTrade {
@@ -79,6 +90,10 @@ export function toPublicTrade(row: TradeRow): PublicTrade {
     takeProfitPrice: row.take_profit_price === null ? null : Number(row.take_profit_price),
     maxProfit: Number(row.max_profit ?? row.stake),
     closeReason: row.close_reason,
+    // Rows written before the digital product existed have no trade_type; the
+    // column defaults to SCALED and so does this, so old history reads right.
+    tradeType: row.trade_type ?? 'SCALED',
+    barrierPrice: row.barrier_price == null ? null : Number(row.barrier_price),
   };
 }
 

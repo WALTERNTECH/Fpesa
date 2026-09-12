@@ -60,6 +60,7 @@ export function OpenPositions(): JSX.Element | null {
         {openTrades.map((trade) => {
           const profit = unrealisedProfit(trade, price);
           const used = marginUsed(trade, price);
+          const digital = trade.tradeType === 'DIGITAL';
           const winning = profit > 0;
           const flat = profit === 0;
 
@@ -72,17 +73,28 @@ export function OpenPositions(): JSX.Element | null {
 
               <div className="meta">
                 <div className="dir">
-                  {trade.direction === 'BUY' ? 'Buy' : 'Sell'} · ×{trade.multiplier}
+                  {trade.direction === 'BUY' ? 'Buy' : 'Sell'}
+                  {/* A digital has no position size — it pays one fixed amount —
+                      so quoting ×1 beside it would only mislead. */}
+                  {digital ? ' · fixed payout' : ' · ×' + trade.multiplier}
                 </div>
                 <div className="stake tnum">{usd(toUsd(trade.stake))}</div>
                 <div className="entry tnum">
                   {fmtPrice(trade.entryPrice)} → {fmtPrice(price)}
-                  {trade.stopOutPrice !== null && (
+                  {digital && trade.barrierPrice !== null && (
+                    <>
+                      {' '}
+                      · needs {trade.direction === 'BUY' ? '>' : '<'}{' '}
+                      {fmtPrice(trade.barrierPrice)}
+                    </>
+                  )}
+                  {!digital && trade.stopOutPrice !== null && (
                     <> · out {fmtPrice(trade.stopOutPrice)}</>
                   )}
                 </div>
                 {/* How much of the stake the move has already eaten. Full bar
-                    means the position is about to close itself. */}
+                    means the position is about to close itself. On a digital
+                    there is no partial loss, so it reads empty or full. */}
                 <div className="margin-bar" aria-hidden="true">
                   <i style={{ width: Math.round(used * 100) + '%' }} />
                 </div>

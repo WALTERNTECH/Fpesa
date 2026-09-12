@@ -22,6 +22,9 @@ import type {
   Instrument,
   MarketSummary,
   ScanResult,
+  TradeType,
+  DigitalQuote,
+  DigitalWinRate,
 } from '../lib/types';
 
 export type Toast = {
@@ -75,6 +78,16 @@ type AppValue = {
   setStake: (value: string) => void;
   duration: number;
   setDuration: (seconds: number) => void;
+  /* Which product the ticket is writing. Stays SCALED while digitals are off. */
+  tradeType: TradeType;
+  setTradeType: (kind: TradeType) => void;
+  /** The chosen win rate, which fixes both the barrier and the payout. */
+  winRate: number;
+  setWinRate: (rate: number) => void;
+  /** Live digital pricing for this market and duration. Null when unavailable. */
+  digitalQuote: DigitalQuote | null;
+  /** The chosen win rate's row of that quote, or null until it arrives. */
+  digitalTerms: DigitalWinRate | null;
   tradeBusy: Direction | null;
   tradeError: string | null;
   setTradeError: (message: string | null) => void;
@@ -123,6 +136,9 @@ const DEFAULT_CONFIG: PlatformConfig = {
   multipliers: { '5': 2000, '10': 1400, '15': 1150, '30': 800, '60': 575 },
   maxProfitMultiple: 3,
   houseEdge: 0.11,
+  // Off until the server says otherwise, so a failed config fetch can never
+  // offer a product the backend would refuse.
+  digitalEnabled: false,
   turnoverMultiple: 11.7,
   symbol: 'FPX100',
   symbolName: 'Volatility 100 Index',
@@ -173,6 +189,9 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [stake, setStake] = useState<string>(String(DEFAULT_CONFIG.minStakeUsd));
   const [duration, setDuration] = useState<number>(10);
+  const [tradeType, setTradeType] = useState<TradeType>('SCALED');
+  const [winRate, setWinRate] = useState<number>(0.7);
+  const [digitalQuote, setDigitalQuote] = useState<DigitalQuote | null>(null);
   const [tradeBusy, setTradeBusy] = useState<Direction | null>(null);
   const [tradeError, setTradeError] = useState<string | null>(null);
   const [desk, setDesk] = useState<DeskState>(DEFAULT_CONFIG.desk);
@@ -585,6 +604,44 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
     (!user || stakeKes <= balance) &&
     price > 0;
 
+  /* The digital ticket has to show the barrier and the payout before the trader
+     commits, the way the scaled ticket shows its stop-out and spread. Both come
+     from the server so the figures on screen are the ones it will price against;
+     the barrier moves with spot, so this re-reads while the ticket is open. */
+  const digitalOn = config.digitalEnabled && tradeType === 'DIGITAL';
+  useEffect(() => {
+    if (!digitalOn) {
+      setDigitalQuote(null);
+      return;
+    }
+    let live = true;
+    const load = async (): Promise<void> => {
+      try {
+        const q = await api.get<DigitalQuote>(
+          '/trades/digital/quote?symbol=' + symbol + '&durationSec=' + duration
+        );
+        if (live) setDigitalQuote(q);
+      } catch {
+        // Leave the last quote up rather than blanking the terms on one bad
+        // fetch; placing re-prices server-side regardless of what is shown.
+        if (live) setDigitalQuote((prev) => prev);
+      }
+    };
+    void load();
+    const id = window.setInterval(() => void load(), 3000);
+    return () => {
+      live = false;
+      window.clearInterval(id);
+    };
+  }, [digitalOn, symbol, duration, user?.promoEdge]);
+
+  // A digital quote is only meaningful for the market and duration it was
+  // priced for; a stale one from the previous selection must not be shown.
+  const digitalTerms =
+    digitalQuote && digitalQuote.symbol === symbol && digitalQuote.durationSec === duration
+      ? digitalQuote.winRates.find((r) => r.winRate === winRate) ?? null
+      : null;
+
   const submitTrade = useCallback(
     async (direction: Direction) => {
       if (!user) {
@@ -600,6 +657,9 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
         const res = await api.post<{ trade: Trade; balance: number }>('/trades', {
           direction, stake: amount, durationSec: duration, accountMode,
           symbol: symbolRef.current,
+          // Only sent when the product is actually on offer, so a stale client
+          // cannot ask for a digital the server has since switched off.
+          ...(digitalOn ? { tradeType: 'DIGITAL', winRate } : {}),
         });
         setOpenTrades((prev) => [...prev, res.trade]);
         setUser((prev) => {
@@ -614,7 +674,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
         setTradeBusy(null);
       }
     },
-    [user, stake, duration, accountMode, tradeBusy]
+    [user, stake, duration, accountMode, tradeBusy, digitalOn, winRate]
   );
 
   /** One tap: opens the whole batch, with the server choosing each leg's side. */
@@ -750,6 +810,12 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       setStake,
       duration,
       setDuration,
+      tradeType,
+      setTradeType,
+      winRate,
+      setWinRate,
+      digitalQuote,
+      digitalTerms,
       tradeBusy,
       tradeError,
       setTradeError,
@@ -780,6 +846,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       instruments, symbol, setSymbol, instrument, multiplier,
       balance, rate, toUsd, toKes,
       openTrades, stake, duration, tradeBusy, tradeError, stakeIssue,
+      tradeType, winRate, digitalQuote, digitalTerms,
       canTrade, stakeCeiling, submitTrade, desk, autoRunCount, run, autoBusy,
       autoScan, autoStage, startAuto, modal, openModal, closeModal, login, register,
       logout, refreshUser, resetDemo, toasts, pushToast,

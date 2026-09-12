@@ -17,6 +17,37 @@ export type AccountMode = 'demo' | 'real';
 export type Direction = 'BUY' | 'SELL';
 export type TradeStatus = 'OPEN' | 'WON' | 'LOST' | 'TIE' | 'VOID';
 
+/**
+ * The two products.
+ *
+ * SCALED pays in proportion to how far price moved, so the win rate sits below
+ * half and the size of the win varies. DIGITAL is decided by one comparison
+ * against a barrier fixed at open: the win rate is wherever the barrier is put,
+ * and the payout is fixed. Same house edge either way — only the shape differs.
+ */
+export type TradeType = 'SCALED' | 'DIGITAL';
+
+/** One win rate on offer, priced for both sides. */
+export type DigitalWinRate = {
+  winRate: number;
+  winRatePct: number;
+  payoutRate: number;
+  payoutPctOfStake: number;
+  barrierMovePct: number;
+  BUY: { barrier: number };
+  SELL: { barrier: number };
+  /** Always −(edge). Returned by the server so the ticket cannot quote better. */
+  expectedPctOfStake: number;
+};
+
+export type DigitalQuote = {
+  symbol: string;
+  durationSec: number;
+  price: number;
+  edge: number;
+  winRates: DigitalWinRate[];
+};
+
 export type Trade = {
   id: string;
   accountMode: AccountMode;
@@ -38,6 +69,9 @@ export type Trade = {
   takeProfitPrice: number | null;
   maxProfit: number;
   closeReason: 'EXPIRY' | 'STOP_OUT' | 'TAKE_PROFIT' | null;
+  tradeType: TradeType;
+  /** The level a digital settles against. Null on a scaled position. */
+  barrierPrice: number | null;
 };
 
 export type Run = {
@@ -204,6 +238,8 @@ export type PlatformConfig = {
   multipliers: Record<string, number>;
   maxProfitMultiple: number;
   houseEdge: number;
+  /** Whether the digital ticket is on offer. False hides the product switch. */
+  digitalEnabled: boolean;
   turnoverMultiple: number;
   symbol: string;
   symbolName: string;

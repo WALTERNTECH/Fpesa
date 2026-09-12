@@ -9,6 +9,13 @@ import type { Direction, Trade } from './types';
  * that decides money, and this display is the bug.
  */
 export function unrealisedProfit(trade: Trade, price: number): number {
+  // A digital is not worth "some of" its payout part way through: at expiry it
+  // is one comparison against the barrier, so the honest running figure is the
+  // result it would settle at if it closed now. Running the scaled formula over
+  // it would show a number that never gets paid.
+  if (trade.tradeType === 'DIGITAL') {
+    return digitalWinning(trade, price) ? trade.maxProfit : -trade.stake;
+  }
   const move = (price - trade.entryPrice) / trade.entryPrice;
   const signed = trade.direction === 'BUY' ? move : -move;
   const raw = trade.stake * trade.multiplier * signed;
@@ -16,8 +23,26 @@ export function unrealisedProfit(trade: Trade, price: number): number {
   return Math.round(clamped * 100) / 100;
 }
 
+/**
+ * Whether a digital is on the winning side of its barrier right now.
+ *
+ * Same comparison the settle function makes, including the strictness: landing
+ * exactly on the barrier is a loss.
+ */
+export function digitalWinning(trade: Trade, price: number): boolean {
+  if (trade.barrierPrice === null) return false;
+  return trade.direction === 'BUY'
+    ? price > trade.barrierPrice
+    : price < trade.barrierPrice;
+}
+
 /** How close the position is to being wiped out, as 0..1 of the stake. */
 export function marginUsed(trade: Trade, price: number): number {
+  // A digital has no gradual wipeout — it is winning or it is losing the lot,
+  // so the bar is empty or full rather than creeping across.
+  if (trade.tradeType === 'DIGITAL') {
+    return digitalWinning(trade, price) ? 0 : 1;
+  }
   const loss = Math.min(unrealisedProfit(trade, price), 0);
   return Math.min(Math.abs(loss) / trade.stake, 1);
 }

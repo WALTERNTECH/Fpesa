@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useApp } from '../store/app';
-import { usd, durationLabel } from '../lib/format';
+import { usd, durationLabel, price as fmtPrice } from '../lib/format';
 import { OpenPositions } from './OpenPositions';
 import { IconArrowDown, IconArrowUp } from './Icons';
 import { PassCard } from './PassCard';
@@ -11,8 +11,10 @@ export function TradePanel(): JSX.Element {
     stake, setStake, duration, setDuration,
     tradeBusy, tradeError, setTradeError, stakeIssue, canTrade, submitTrade, desk,
     run, startAuto, autoBusy, symbol, multiplier, stakeCeiling, toUsd, autoRunCount,
+    tradeType, setTradeType, winRate, setWinRate, digitalQuote, digitalTerms,
   } = useApp();
 
+  const isDigital = config.digitalEnabled && tradeType === 'DIGITAL';
   const stakeAmount = Number(stake);
   const maxProfit = Number.isFinite(stakeAmount)
     ? stakeAmount * config.maxProfitMultiple
@@ -43,6 +45,11 @@ export function TradePanel(): JSX.Element {
       new Set(options.filter((v) => v >= config.minStakeUsd && v <= ceilingUsd))
     ).sort((a, b) => a - b);
   }, [config.minStakeUsd, stakeCeiling, toUsd]);
+
+  // What a winning digital pays, in dollars, at the chosen win rate.
+  const digitalWin = digitalTerms && Number.isFinite(stakeAmount)
+    ? stakeAmount * digitalTerms.payoutRate
+    : 0;
 
   // Real trading is gated while the book is over its daily payout target.
   const deskClosed = accountMode === 'real' && !desk.open;
@@ -144,9 +151,98 @@ export function TradePanel(): JSX.Element {
             </div>
           </div>
 
-          {/* Proportional outcome, so the panel states the terms rather than a
+          {/* Two products, same house edge, different shape. Named by what the
+              trader actually experiences rather than by the jargon, because the
+              choice is between win-often-small and win-rarely-big. */}
+          {config.digitalEnabled && (
+            <div className="field">
+              <div className="field-label">
+                <span>Payout style</span>
+                <span className="hint">Same cost either way</span>
+              </div>
+              <div className="prod-switch" role="group" aria-label="Payout style">
+                <button
+                  type="button"
+                  aria-pressed={!isDigital}
+                  onClick={() => setTradeType('SCALED')}
+                >
+                  <b>Bigger wins</b>
+                  <small>Less often · paid on the size of the move</small>
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={isDigital}
+                  onClick={() => setTradeType('DIGITAL')}
+                >
+                  <b>Smaller wins</b>
+                  <small>More often · one fixed payout</small>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {isDigital && (
+            <div className="field">
+              <div className="field-label">
+                <span>How often you win</span>
+                <span className="hint">Higher odds pay less</span>
+              </div>
+              <div className="dur-grid" role="group" aria-label="Win rate">
+                {(digitalQuote?.winRates ?? []).map((row) => (
+                  <button
+                    key={row.winRate}
+                    type="button"
+                    className="dur"
+                    aria-pressed={winRate === row.winRate}
+                    onClick={() => setWinRate(row.winRate)}
+                  >
+                    {row.winRatePct}%
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {isDigital ? (
+            /* A digital's terms are fixed the moment it opens: where the line
+               sits, what a win pays, and that a loss costs the whole stake.
+               All three are shown before the trader commits. */
+            <div className="terms">
+              <div className="term">
+                <span className="k">Win pays</span>
+                <span className="v tnum up">
+                  {digitalTerms
+                    ? '+' + usd(digitalWin) + ' · ' + digitalTerms.payoutPctOfStake.toFixed(1) + '%'
+                    : '—'}
+                </span>
+              </div>
+              <div className="term">
+                <span className="k">A loss costs</span>
+                <span className="v tnum down">{usd(stakeAmount || 0)} — the whole stake</span>
+              </div>
+              <div className="term">
+                <span className="k">Buy wins above</span>
+                <span className="v tnum">
+                  {digitalTerms ? fmtPrice(digitalTerms.BUY.barrier) : '—'}
+                </span>
+              </div>
+              <div className="term">
+                <span className="k">Sell wins below</span>
+                <span className="v tnum">
+                  {digitalTerms ? fmtPrice(digitalTerms.SELL.barrier) : '—'}
+                </span>
+              </div>
+              <div className="term">
+                <span className="k">Expected result</span>
+                <span className="v tnum down">
+                  {digitalTerms ? digitalTerms.expectedPctOfStake.toFixed(2) + '% of stake' : '—'}
+                </span>
+              </div>
+            </div>
+          ) : (
+          /* Proportional outcome, so the panel states the terms rather than a
               single payout figure: how the move is scaled, the most that can
-              be won, and the most that can be lost. */}
+              be won, and the most that can be lost. */
           <div className="terms">
             <div className="term">
               <span className="k">Position size</span>
@@ -172,6 +268,22 @@ export function TradePanel(): JSX.Element {
               </span>
             </div>
           </div>
+          )}
+
+          {/* The appealing half of this product is "you win most of the time",
+              so the half that corrects it belongs on the same card, in the same
+              size type — not in a terms page. Winning more often is not the
+              same as coming out ahead, and at any spread above zero the
+              expected result is still negative. Do not soften this. */}
+          {isDigital && digitalTerms && (
+            <div className="digital-note">
+              You win about <b>{digitalTerms.winRatePct} out of every 100 trades</b> — but a{' '}
+              {digitalTerms.winRatePct}% win rate is <b>not</b> a {digitalTerms.winRatePct}% chance
+              of profit. The losses are bigger than the wins by design, so the expected result
+              stays negative at {digitalTerms.expectedPctOfStake.toFixed(2)}% of stake. It changes
+              how often you win, not whether you come out ahead.
+            </div>
+          )}
 
           {onPromo && user?.promoUntil && (
             <div className="promo-live">
@@ -189,15 +301,22 @@ export function TradePanel(): JSX.Element {
           {/* Reads every market's realised volatility, picks the one where
               this duration is least likely to stop out, and opens the batch
               there. It chooses the market, not the side — the series is
-              driftless, so the side stays a coin flip per leg. */}
-          <button
-            className="autotrade"
-            disabled={autoBusy || tradeBusy !== null || deskClosed || (Boolean(user) && !canTrade)}
-            onClick={() => void startAuto()}
-          >
-            <span className="at-main">AI Scanner</span>
-            <span className="at-sub">Scans all {config.instruments.length} markets, then opens {autoRunCount} positions</span>
-          </button>
+              driftless, so the side stays a coin flip per leg.
+
+              Scaled only, and hidden rather than disabled on the digital
+              ticket: the scan ranks markets by stop-out odds, which a digital
+              does not have, and the run places the scaled product. Leaving the
+              button up would open a different product than the one selected. */}
+          {!isDigital && (
+            <button
+              className="autotrade"
+              disabled={autoBusy || tradeBusy !== null || deskClosed || (Boolean(user) && !canTrade)}
+              onClick={() => void startAuto()}
+            >
+              <span className="at-main">AI Scanner</span>
+              <span className="at-sub">Scans all {config.instruments.length} markets, then opens {autoRunCount} positions</span>
+            </button>
+          )}
 
           {run && run.status === 'RUNNING' && (
             <div className="at-live">
@@ -222,7 +341,11 @@ export function TradePanel(): JSX.Element {
             >
               <IconArrowUp size={17} />
               {tradeBusy === 'BUY' ? 'Placing…' : 'Buy'}
-              <small>Price goes up</small>
+              <small>
+                {isDigital && digitalTerms
+                  ? 'Above ' + fmtPrice(digitalTerms.BUY.barrier)
+                  : 'Price goes up'}
+              </small>
             </button>
             <button
               className="trade-btn sell"
@@ -231,7 +354,11 @@ export function TradePanel(): JSX.Element {
             >
               <IconArrowDown size={17} />
               {tradeBusy === 'SELL' ? 'Placing…' : 'Sell'}
-              <small>Price goes down</small>
+              <small>
+                {isDigital && digitalTerms
+                  ? 'Below ' + fmtPrice(digitalTerms.SELL.barrier)
+                  : 'Price goes down'}
+              </small>
             </button>
           </div>
 

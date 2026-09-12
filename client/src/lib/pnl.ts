@@ -16,6 +16,12 @@ export function unrealisedProfit(trade: Trade, price: number): number {
   if (trade.tradeType === 'DIGITAL') {
     return digitalWinning(trade, price) ? trade.maxProfit : -trade.stake;
   }
+  // Over/Under is decided by the CLOSING digit, so nothing about the current
+  // price says anything about the outcome. Showing a running win or loss would
+  // be inventing information — it is simply unresolved until it settles.
+  if (trade.tradeType === 'DIGITS_OVER' || trade.tradeType === 'DIGITS_UNDER') {
+    return 0;
+  }
   const move = (price - trade.entryPrice) / trade.entryPrice;
   const signed = trade.direction === 'BUY' ? move : -move;
   const raw = trade.stake * trade.multiplier * signed;
@@ -42,6 +48,10 @@ export function marginUsed(trade: Trade, price: number): number {
   // so the bar is empty or full rather than creeping across.
   if (trade.tradeType === 'DIGITAL') {
     return digitalWinning(trade, price) ? 0 : 1;
+  }
+  // Nothing is being eaten away on an Over/Under; it resolves in one step.
+  if (trade.tradeType === 'DIGITS_OVER' || trade.tradeType === 'DIGITS_UNDER') {
+    return 0;
   }
   const loss = Math.min(unrealisedProfit(trade, price), 0);
   return Math.min(Math.abs(loss) / trade.stake, 1);

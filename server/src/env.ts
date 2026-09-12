@@ -281,6 +281,12 @@ export const env = {
    * can stop out early.
    */
   digitalEdge: num('DIGITAL_EDGE', 0.05),
+  /**
+   * Over/Under on the last digit. Off by default so it ships dark and is
+   * switched on once it has been exercised on a live deployment; the other
+   * products are unaffected either way.
+   */
+  digitsEnabled: bool('DIGITS_ENABLED', false),
 
   sandbox: {
     /**

@@ -11,6 +11,7 @@ import { multiplierFor } from '../services/trading.js';
 import { priceFeed, SYMBOL } from '../services/prices.js';
 import { getInstrument } from '../services/instruments.js';
 import { quoteDigital, digitalsEnabled, DIGITAL_WIN_RATES, digitalEdgeFor } from '../services/digital.js';
+import { quoteAllDigits, digitsEnabled, isOfferedDigit, type DigitPick } from '../services/digits.js';
 import {
   ALLOWED_DURATIONS,
   TradeError,
@@ -222,6 +223,21 @@ tradeRouter.get('/digital/quote', requireAuth, (req, res) => {
   });
 });
 
+/**
+ * Prices every Over/Under ticket.
+ *
+ * No market, no duration and no volatility: the digit is uniform, so Over 5 is
+ * a 40% ticket everywhere and always. The trader sees the chance and the payout
+ * for all seventeen tickets at once and picks one.
+ */
+tradeRouter.get('/digits/quote', requireAuth, (req, res) => {
+  if (!digitsEnabled()) {
+    res.status(503).json({ error: 'DIGITS_OFF', message: 'That product is not available yet.' });
+    return;
+  }
+  res.json(quoteAllDigits(req.user!.promoEdge));
+});
+
 // A human cannot meaningfully place more than a couple of trades a second;
 // this stops a scripted client from hammering the settlement engine.
 const placeLimiter = rateLimit({
@@ -243,8 +259,10 @@ const placeSchema = z.object({
   // Omitted by older clients, which trade the default market. On a run this
   // also accepts 'AUTO', which lets the scan choose the instrument.
   symbol: z.string().min(1).max(16).optional(),
-  tradeType: z.enum(['SCALED', 'DIGITAL']).default('SCALED'),
+  tradeType: z.enum(['SCALED', 'DIGITAL', 'DIGITS_OVER', 'DIGITS_UNDER']).default('SCALED'),
   winRate: z.coerce.number().optional(),
+  /** The digit an Over/Under ticket is settled against. */
+  digit: z.coerce.number().int().min(0).max(9).optional(),
 });
 
 tradeRouter.post('/', requireAuth, placeLimiter, async (req, res) => {
@@ -256,12 +274,29 @@ tradeRouter.post('/', requireAuth, placeLimiter, async (req, res) => {
     });
     return;
   }
-  const { direction, stake, durationSec, accountMode, symbol, tradeType, winRate } = parsed.data;
+  const { direction, stake, durationSec, accountMode, symbol, tradeType, winRate, digit } =
+    parsed.data;
+
+  // Over 9 and Under 0 can never win, so they are never sold. Checked here as
+  // well as in the database, so a bad request is a 400 rather than a 500.
+  if (tradeType === 'DIGITS_OVER' || tradeType === 'DIGITS_UNDER') {
+    const pick: DigitPick = tradeType === 'DIGITS_OVER' ? 'OVER' : 'UNDER';
+    if (digit === undefined || !isOfferedDigit(pick, digit)) {
+      res.status(400).json({
+        error: 'VALIDATION',
+        message: pick === 'OVER'
+          ? 'Choose a digit from 0 to 8.'
+          : 'Choose a digit from 1 to 9.',
+      });
+      return;
+    }
+  }
 
   try {
     const result = await tradingEngine.placeTrade({
       tradeType,
       winRate,
+      digit,
       userId: req.user!.id,
       mode: accountMode,
       direction,

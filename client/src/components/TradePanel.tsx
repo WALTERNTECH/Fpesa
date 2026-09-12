@@ -11,9 +11,21 @@ export function TradePanel(): JSX.Element {
     tradeBusy, tradeError, setTradeError, stakeIssue, canTrade, submitTrade, desk,
     run, startAuto, autoBusy, symbol, multiplier, stakeCeiling, toUsd, autoRunCount,
     tradeType, setTradeType, winRate, setWinRate, digitalQuote, digitalTerms,
+    digit, setDigit, digitTerms,
   } = useApp();
 
   const isDigital = config.digitalEnabled && tradeType === 'DIGITAL';
+  const isDigits =
+    config.digitsEnabled && (tradeType === 'DIGITS_OVER' || tradeType === 'DIGITS_UNDER');
+  const pick = tradeType === 'DIGITS_UNDER' ? 'UNDER' : 'OVER';
+
+  /* Over 9 and Under 0 can never win and are not sold, so switching sides has
+     to carry the picked digit into the range the new side actually offers. */
+  const choosePick = (next: 'OVER' | 'UNDER'): void => {
+    setTradeType(next === 'OVER' ? 'DIGITS_OVER' : 'DIGITS_UNDER');
+    if (next === 'OVER' && digit > 8) setDigit(8);
+    if (next === 'UNDER' && digit < 1) setDigit(1);
+  };
   const stakeAmount = Number(stake);
   const maxProfit = Number.isFinite(stakeAmount)
     ? stakeAmount * config.maxProfitMultiple
@@ -44,6 +56,11 @@ export function TradePanel(): JSX.Element {
       new Set(options.filter((v) => v >= config.minStakeUsd && v <= ceilingUsd))
     ).sort((a, b) => a - b);
   }, [config.minStakeUsd, stakeCeiling, toUsd]);
+
+  // What a winning Over/Under pays, in dollars.
+  const digitWin = digitTerms && Number.isFinite(stakeAmount)
+    ? stakeAmount * digitTerms.payoutRate
+    : 0;
 
   // What a winning digital pays, in dollars, at the chosen win rate.
   const digitalWin = digitalTerms && Number.isFinite(stakeAmount)
@@ -155,29 +172,82 @@ export function TradePanel(): JSX.Element {
               win-rarely-big. They no longer carry the same edge — the digital
               is priced lower, because on that product the edge is subtracted
               from a payout the trader can see. */}
-          {config.digitalEnabled && (
+          {(config.digitalEnabled || config.digitsEnabled) && (
             <div className="field">
               <div className="field-label">
                 <span>Payout style</span>
                 <span className="hint">Pick how you get paid</span>
               </div>
-              <div className="prod-switch" role="group" aria-label="Payout style">
+              <div
+                className={'prod-switch' + (config.digitsEnabled ? ' three' : '')}
+                role="group"
+                aria-label="Payout style"
+              >
                 <button
                   type="button"
-                  aria-pressed={!isDigital}
+                  aria-pressed={!isDigital && !isDigits}
                   onClick={() => setTradeType('SCALED')}
                 >
                   <b>Bigger wins</b>
-                  <small>Less often · paid on the size of the move</small>
+                  <small>Paid on the size of the move</small>
                 </button>
-                <button
-                  type="button"
-                  aria-pressed={isDigital}
-                  onClick={() => setTradeType('DIGITAL')}
-                >
-                  <b>Smaller wins</b>
-                  <small>More often · one fixed payout</small>
+                {config.digitalEnabled && (
+                  <button
+                    type="button"
+                    aria-pressed={isDigital}
+                    onClick={() => setTradeType('DIGITAL')}
+                  >
+                    <b>Smaller wins</b>
+                    <small>More often · one fixed payout</small>
+                  </button>
+                )}
+                {config.digitsEnabled && (
+                  <button
+                    type="button"
+                    aria-pressed={isDigits}
+                    onClick={() => choosePick('OVER')}
+                  >
+                    <b>Over / Under</b>
+                    <small>On the closing digit</small>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {isDigits && (
+            <div className="field">
+              <div className="field-label">
+                <span>Last digit of the closing price</span>
+                <span className="hint">Rarer digit pays more</span>
+              </div>
+              <div className="prod-switch" role="group" aria-label="Over or under">
+                <button type="button" aria-pressed={pick === 'OVER'} onClick={() => choosePick('OVER')}>
+                  <b>Over</b>
+                  <small>Higher than your digit</small>
                 </button>
+                <button type="button" aria-pressed={pick === 'UNDER'} onClick={() => choosePick('UNDER')}>
+                  <b>Under</b>
+                  <small>Lower than your digit</small>
+                </button>
+              </div>
+              <div className="digit-grid" role="group" aria-label="Digit">
+                {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => {
+                  // Over 9 and Under 0 can never win, so they are not offered.
+                  const offered = pick === 'OVER' ? d <= 8 : d >= 1;
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      className="digit"
+                      disabled={!offered}
+                      aria-pressed={offered && digit === d}
+                      onClick={() => setDigit(d)}
+                    >
+                      {d}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -204,7 +274,24 @@ export function TradePanel(): JSX.Element {
             </div>
           )}
 
-          {isDigital ? (
+          {isDigits ? (
+            /* The whole product in two rows: what a win pays, what a loss
+               costs. The chance sits in the note under it. */
+            <div className="terms">
+              <div className="term">
+                <span className="k">Win pays</span>
+                <span className="v tnum up">
+                  {digitTerms
+                    ? '+' + usd(digitWin) + ' · ' + digitTerms.payoutPctOfStake.toFixed(0) + '%'
+                    : '—'}
+                </span>
+              </div>
+              <div className="term">
+                <span className="k">If it loses</span>
+                <span className="v tnum down">{usd(stakeAmount || 0)}</span>
+              </div>
+            </div>
+          ) : isDigital ? (
             /* Two rows, because that is the whole product: what a win pays and
                what a loss costs. The two barriers are on the Buy and Sell
                buttons, where the trader is looking when they pick a side, so
@@ -259,6 +346,20 @@ export function TradePanel(): JSX.Element {
               time is not the same as coming out ahead, and saying so plainly is
               what keeps "win 70 in 100" from being a false promise. Shorten the
               wording if you like; do not drop the second half. */}
+          {/* The chance is exact arithmetic here, not a model: there are ten
+              digits and the winning ones are counted. Still says the same
+              second half, because "wins 4 times in 10" invites the same wrong
+              conclusion as "wins 7 times in 10" did. */}
+          {isDigits && digitTerms && (
+            <p className="digital-note">
+              Wins when the closing digit is{' '}
+              <b>{pick === 'OVER' ? 'above' : 'below'} {digitTerms.digit}</b> —{' '}
+              {digitTerms.winChancePct} times in 100. Landing exactly on {digitTerms.digit}{' '}
+              loses. Each trade still costs{' '}
+              {Math.abs(digitTerms.expectedPctOfStake).toFixed(0)}% on average.
+            </p>
+          )}
+
           {isDigital && digitalTerms && (
             <p className="digital-note">
               Wins about <b>{digitalTerms.winRatePct} in 100</b> — more often, not more overall.
@@ -311,9 +412,27 @@ export function TradePanel(): JSX.Element {
 
 
 
+          {/* Over/Under is not a side: the ticket is the digit and the
+              direction column carries nothing a trader chose. One button. */}
+          {isDigits && (
+            <button
+              className="btn btn-primary btn-block digit-place"
+              disabled={tradeBusy !== null || deskClosed || (Boolean(user) && !canTrade) || !digitTerms}
+              onClick={() => void submitTrade('BUY')}
+            >
+              {tradeBusy
+                ? 'Placing…'
+                : digitTerms
+                ? pick === 'OVER'
+                  ? 'Trade — over ' + digitTerms.digit
+                  : 'Trade — under ' + digitTerms.digit
+                : 'Loading…'}
+            </button>
+          )}
+
           {/* Hidden on phones, where the sticky bar carries these instead so the
               chart stays on screen while the trade is placed. */}
-          <div className="trade-actions">
+          <div className="trade-actions" hidden={isDigits}>
             <button
               className="trade-btn buy"
               disabled={tradeBusy !== null || deskClosed || (Boolean(user) && !canTrade)}

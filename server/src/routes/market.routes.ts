@@ -314,6 +314,8 @@ marketRouter.get('/config', async (_req, res) => {
     // whether to show that product at all, and it makes the flag checkable
     // from outside rather than only in a dashboard.
     digitalEnabled: env.digitalEnabled,
+    /** Whether Over/Under on the last digit is on offer. */
+    digitsEnabled: env.digitsEnabled,
     turnoverMultiple: env.turnoverMultiple,
     minDeposit: env.minDeposit,
     /** Deposits are entered in this currency; everything else is shillings. */

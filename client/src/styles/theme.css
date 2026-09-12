@@ -2061,6 +2061,35 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 }
 .digital-note b { color: var(--ink); font-weight: 650; }
 
+/* Three products need a third column; two keep the wider halves. */
+.prod-switch.three { grid-template-columns: 1fr 1fr 1fr; }
+.prod-switch.three button b { font-size: 12px; }
+.prod-switch.three button small { font-size: 9.5px; }
+
+/* The ten digits, as one tap target each. */
+.digit-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 3px;
+  margin-top: 8px;
+}
+.digit {
+  padding: 9px 0;
+  border-radius: 7px;
+  background: var(--surface-sunk);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  transition: all 0.12s var(--ease);
+}
+.digit[aria-pressed='true'] {
+  background: var(--blue);
+  color: #fff;
+}
+.digit:disabled { opacity: 0.3; }
+.digit-place { margin-top: 12px; }
+
 /* The struck-through original, so the saving reads at a glance. */
 .term .was {
   color: var(--subtle);

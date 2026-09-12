@@ -6,6 +6,7 @@ import { exposureGuard } from './exposure.js';
 import { executionStats } from './execution-stats.js';
 import { settings } from './settings.js';
 import { quoteDigital, digitalsEnabled, isOfferedWinRate, digitalEdgeFor } from './digital.js';
+import { quoteDigit, digitsEnabled, isOfferedDigit, type DigitPick } from './digits.js';
 import { solvency } from './solvency.js';
 import { hub } from '../realtime/hub.js';
 
@@ -31,7 +32,7 @@ export type TradeRow = {
   take_profit_price: string | number | null;
   max_profit: string | number | null;
   close_reason: 'EXPIRY' | 'STOP_OUT' | 'TAKE_PROFIT' | null;
-  trade_type: 'SCALED' | 'DIGITAL';
+  trade_type: 'SCALED' | 'DIGITAL' | 'DIGITS_OVER' | 'DIGITS_UNDER';
   barrier_price: string | number | null;
   run_id?: string | null;
 };
@@ -57,13 +58,14 @@ export type PublicTrade = {
   takeProfitPrice: number | null;
   maxProfit: number;
   closeReason: TradeRow['close_reason'];
-  /** Which product this is. A digital is decided against `barrierPrice`. */
+  /** Which product this is. Both fixed-payout kinds settle on `barrierPrice`. */
   tradeType: TradeRow['trade_type'];
   /**
-   * The level a digital is settled against, fixed when it opened. Null on a
-   * scaled position, which has no barrier — it is paid on the size of the move.
-   * Without this the client cannot show a digital's terms after it is placed,
-   * nor tell the two products apart in history.
+   * What the position is settled against, fixed when it opened: a price for a
+   * digital, and the picked digit 0-9 for an Over/Under. Null on a scaled
+   * position, which has no barrier — it is paid on the size of the move.
+   * Without this the client cannot show the terms after a position is placed,
+   * nor tell the products apart in history.
    */
   barrierPrice: number | null;
 };
@@ -433,8 +435,10 @@ class TradingEngine {
      * entry stamp.
      */
     edge?: number;
-    /** 'SCALED' (the original product) or 'DIGITAL'. */
-    tradeType?: 'SCALED' | 'DIGITAL';
+    /** Which product: the scaled original, a digital, or Over/Under on a digit. */
+    tradeType?: 'SCALED' | 'DIGITAL' | 'DIGITS_OVER' | 'DIGITS_UNDER';
+    /** The digit an Over/Under ticket settles against. */
+    digit?: number;
     /** Digitals only: the share of positions that win, which sets the payout. */
     winRate?: number;
   }): Promise<{ trade: PublicTrade; balance: number }> {
@@ -500,13 +504,26 @@ class TradingEngine {
     // platform's live edge. Bounded here as well as at every write, because a
     // bad value would mis-price a real position.
     const isDigital = params.tradeType === 'DIGITAL';
+    const digitPick: DigitPick | null =
+      params.tradeType === 'DIGITS_OVER' ? 'OVER'
+      : params.tradeType === 'DIGITS_UNDER' ? 'UNDER'
+      : null;
     const scaledEdge =
       typeof params.edge === 'number' && params.edge >= 0 && params.edge <= 0.2
         ? params.edge
         : settings.houseEdge();
     // A digital is priced off its own, lower edge — see digitalEdgeFor. The
     // trader's pass still applies to it when the pass is the better rate.
-    const edge = isDigital ? digitalEdgeFor(params.edge ?? null) : scaledEdge;
+    const edge = isDigital || digitPick ? digitalEdgeFor(params.edge ?? null) : scaledEdge;
+
+    if (digitPick) {
+      if (!digitsEnabled()) {
+        throw new TradeError('DIGITS_OFF', 'That product is not available yet.', 503);
+      }
+      if (params.digit === undefined || !isOfferedDigit(digitPick, params.digit)) {
+        throw new TradeError('VALIDATION', 'Choose an offered digit.');
+      }
+    }
     if (isDigital) {
       if (!digitalsEnabled()) {
         throw new TradeError('DIGITAL_OFF', 'That product is not available yet.', 503);
@@ -531,10 +548,18 @@ class TradingEngine {
         })
       : null;
 
-    const entry = quote ? mid : applySpread(mid, direction, multiplier, instrument.precision, edge);
-    const { stopOut, takeProfit } = quote
-      // Digitals settle at expiry against their barrier and have no running
-      // exit levels, so the tick-by-tick barrier scan must never see them.
+    // Over/Under is decided by the closing digit, so it has no barrier to
+    // place and nothing to price off volatility — the odds are arithmetic.
+    const digitQuote = digitPick ? quoteDigit(digitPick, params.digit!, edge) : null;
+
+    // Both fixed-payout products carry their edge in the payout, so they open
+    // at the mid. Marking the entry as well would charge it twice.
+    const entry = quote || digitQuote
+      ? mid
+      : applySpread(mid, direction, multiplier, instrument.precision, edge);
+    const { stopOut, takeProfit } = quote || digitQuote
+      // Neither fixed-payout product has running exit levels: they settle at
+      // expiry only, so the tick-by-tick barrier scan must never see them.
       ? { stopOut: null as number | null, takeProfit: null as number | null }
       : exitLevels(entry, direction, multiplier, env.maxProfitMultiple, instrument.precision);
 
@@ -542,6 +567,8 @@ class TradingEngine {
     // guard should reserve: the most the position can ever pay out.
     const maxProfit = quote
       ? Math.round(rounded * quote.payoutRate * 100) / 100
+      : digitQuote
+      ? Math.round(rounded * digitQuote.payoutRate * 100) / 100
       : Math.round(rounded * env.maxProfitMultiple * 100) / 100;
 
     // Everything above this line is what stands between the tap and the price
@@ -567,8 +594,10 @@ class TradingEngine {
       // trades arriving together cannot both pass a limit only one fits in.
       p_operator_float: env.operatorFloat,
       p_position_share: env.maxPositionShare,
-      p_trade_type: isDigital ? 'DIGITAL' : 'SCALED',
-      p_barrier: quote ? quote.barrier : null,
+      p_trade_type: digitPick ? ('DIGITS_' + digitPick) : isDigital ? 'DIGITAL' : 'SCALED',
+      // On Over/Under the barrier column carries the picked digit rather than
+      // a price — the thing the position is settled against either way.
+      p_barrier: quote ? quote.barrier : digitQuote ? digitQuote.digit : null,
     });
 
     if (error) {

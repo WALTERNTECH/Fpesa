@@ -288,6 +288,8 @@ export function TradeHistory(): JSX.Element {
                           <span className="d">
                             {t.durationSec}s
                             {t.tradeType === 'DIGITAL' && ' · fixed'}
+                            {t.tradeType === 'DIGITS_OVER' && ' · over ' + (t.barrierPrice ?? '')}
+                            {t.tradeType === 'DIGITS_UNDER' && ' · under ' + (t.barrierPrice ?? '')}
                           </span>
                         </span>
                         <span className="hr-px tnum">

@@ -25,7 +25,7 @@ export type TradeStatus = 'OPEN' | 'WON' | 'LOST' | 'TIE' | 'VOID';
  * against a barrier fixed at open: the win rate is wherever the barrier is put,
  * and the payout is fixed. Same house edge either way — only the shape differs.
  */
-export type TradeType = 'SCALED' | 'DIGITAL';
+export type TradeType = 'SCALED' | 'DIGITAL' | 'DIGITS_OVER' | 'DIGITS_UNDER';
 
 /** One win rate on offer, priced for both sides. */
 export type DigitalWinRate = {
@@ -38,6 +38,24 @@ export type DigitalWinRate = {
   SELL: { barrier: number };
   /** Always −(edge). Returned by the server so the ticket cannot quote better. */
   expectedPctOfStake: number;
+};
+
+/** One Over/Under ticket: the chance of winning and what it pays. */
+export type DigitTicket = {
+  pick: 'OVER' | 'UNDER';
+  digit: number;
+  winChance: number;
+  winChancePct: number;
+  payoutRate: number;
+  payoutPctOfStake: number;
+  edge: number;
+  expectedPctOfStake: number;
+};
+
+export type DigitsQuote = {
+  edge: number;
+  over: DigitTicket[];
+  under: DigitTicket[];
 };
 
 export type DigitalQuote = {
@@ -70,7 +88,10 @@ export type Trade = {
   maxProfit: number;
   closeReason: 'EXPIRY' | 'STOP_OUT' | 'TAKE_PROFIT' | null;
   tradeType: TradeType;
-  /** The level a digital settles against. Null on a scaled position. */
+  /**
+   * What the position settles against: a price for a digital, the picked digit
+   * for an Over/Under. Null on a scaled position.
+   */
   barrierPrice: number | null;
 };
 
@@ -240,6 +261,8 @@ export type PlatformConfig = {
   houseEdge: number;
   /** Whether the digital ticket is on offer. False hides the product switch. */
   digitalEnabled: boolean;
+  /** Whether Over/Under on the last digit is on offer. */
+  digitsEnabled: boolean;
   turnoverMultiple: number;
   symbol: string;
   symbolName: string;

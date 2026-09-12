@@ -8,6 +8,7 @@ import cookieParser from 'cookie-parser';
 import { env, assertEnv } from './env.js';
 import { attachUser } from './lib/auth.js';
 import { hub } from './realtime/hub.js';
+import { publishDigitPrecision } from './services/digits.js';
 import { priceFeed } from './services/prices.js';
 import { tradingEngine } from './services/trading.js';
 import { primeNews } from './services/news.js';
@@ -206,6 +207,10 @@ async function main(): Promise<void> {
     settings.start();
     solvency.startFloatSync();
     startFx();
+    // Settlement reads the last digit at the precision the ticket displayed,
+    // and SQL cannot know what that is. Publishing it here keeps the database
+    // in step with the instrument config on every deploy.
+    await publishDigitPrecision();
   }
 
   server.listen(env.port, () => {

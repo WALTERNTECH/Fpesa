@@ -25,6 +25,8 @@ import type {
   TradeType,
   DigitalQuote,
   DigitalWinRate,
+  DigitsQuote,
+  DigitTicket,
 } from '../lib/types';
 
 export type Toast = {
@@ -88,6 +90,13 @@ type AppValue = {
   digitalQuote: DigitalQuote | null;
   /** The chosen win rate's row of that quote, or null until it arrives. */
   digitalTerms: DigitalWinRate | null;
+  /** The digit an Over/Under ticket is settled against. */
+  digit: number;
+  setDigit: (digit: number) => void;
+  /** Every Over/Under ticket on offer, priced. Null while unavailable. */
+  digitsQuote: DigitsQuote | null;
+  /** The picked ticket's row of that quote, or null until it arrives. */
+  digitTerms: DigitTicket | null;
   tradeBusy: Direction | null;
   tradeError: string | null;
   setTradeError: (message: string | null) => void;
@@ -139,6 +148,7 @@ const DEFAULT_CONFIG: PlatformConfig = {
   // Off until the server says otherwise, so a failed config fetch can never
   // offer a product the backend would refuse.
   digitalEnabled: false,
+  digitsEnabled: false,
   turnoverMultiple: 11.7,
   symbol: 'FPX100',
   symbolName: 'Volatility 100 Index',
@@ -192,6 +202,8 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
   const [tradeType, setTradeType] = useState<TradeType>('SCALED');
   const [winRate, setWinRate] = useState<number>(0.7);
   const [digitalQuote, setDigitalQuote] = useState<DigitalQuote | null>(null);
+  const [digit, setDigit] = useState<number>(5);
+  const [digitsQuote, setDigitsQuote] = useState<DigitsQuote | null>(null);
   const [tradeBusy, setTradeBusy] = useState<Direction | null>(null);
   const [tradeError, setTradeError] = useState<string | null>(null);
   const [desk, setDesk] = useState<DeskState>(DEFAULT_CONFIG.desk);
@@ -635,6 +647,28 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
     };
   }, [digitalOn, symbol, duration, user?.promoEdge]);
 
+  const digitsOn =
+    config.digitsEnabled &&
+    (tradeType === 'DIGITS_OVER' || tradeType === 'DIGITS_UNDER');
+  useEffect(() => {
+    if (!digitsOn) {
+      setDigitsQuote(null);
+      return;
+    }
+    let live = true;
+    void api
+      .get<DigitsQuote>('/trades/digits/quote')
+      .then((q) => { if (live) setDigitsQuote(q); })
+      .catch(() => undefined);
+    return () => { live = false; };
+  }, [digitsOn, user?.promoEdge]);
+
+  const digitTerms = (() => {
+    if (!digitsQuote) return null;
+    const side = tradeType === 'DIGITS_OVER' ? digitsQuote.over : digitsQuote.under;
+    return side.find((t) => t.digit === digit) ?? null;
+  })();
+
   // A digital quote is only meaningful for the market and duration it was
   // priced for; a stale one from the previous selection must not be shown.
   const digitalTerms =
@@ -660,6 +694,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
           // Only sent when the product is actually on offer, so a stale client
           // cannot ask for a digital the server has since switched off.
           ...(digitalOn ? { tradeType: 'DIGITAL', winRate } : {}),
+          ...(digitsOn ? { tradeType, digit } : {}),
         });
         setOpenTrades((prev) => [...prev, res.trade]);
         setUser((prev) => {
@@ -674,7 +709,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
         setTradeBusy(null);
       }
     },
-    [user, stake, duration, accountMode, tradeBusy, digitalOn, winRate]
+    [user, stake, duration, accountMode, tradeBusy, digitalOn, winRate, digitsOn, tradeType, digit]
   );
 
   /** One tap: opens the whole batch, with the server choosing each leg's side. */
@@ -816,6 +851,10 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       setWinRate,
       digitalQuote,
       digitalTerms,
+      digit,
+      setDigit,
+      digitsQuote,
+      digitTerms,
       tradeBusy,
       tradeError,
       setTradeError,
@@ -846,7 +885,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       instruments, symbol, setSymbol, instrument, multiplier,
       balance, rate, toUsd, toKes,
       openTrades, stake, duration, tradeBusy, tradeError, stakeIssue,
-      tradeType, winRate, digitalQuote, digitalTerms,
+      tradeType, winRate, digitalQuote, digitalTerms, digit, digitsQuote, digitTerms,
       canTrade, stakeCeiling, submitTrade, desk, autoRunCount, run, autoBusy,
       autoScan, autoStage, startAuto, modal, openModal, closeModal, login, register,
       logout, refreshUser, resetDemo, toasts, pushToast,

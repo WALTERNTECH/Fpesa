@@ -61,6 +61,10 @@ export function OpenPositions(): JSX.Element | null {
           const profit = unrealisedProfit(trade, price);
           const used = marginUsed(trade, price);
           const digital = trade.tradeType === 'DIGITAL';
+          const overUnder =
+            trade.tradeType === 'DIGITS_OVER' ? 'over'
+            : trade.tradeType === 'DIGITS_UNDER' ? 'under'
+            : null;
           const winning = profit > 0;
           const flat = profit === 0;
 
@@ -73,10 +77,16 @@ export function OpenPositions(): JSX.Element | null {
 
               <div className="meta">
                 <div className="dir">
-                  {trade.direction === 'BUY' ? 'Buy' : 'Sell'}
+                  {/* Over/Under has no side; the direction column carries a
+                      placeholder, so naming it would be inventing a choice. */}
+                  {overUnder ? 'Digit' : trade.direction === 'BUY' ? 'Buy' : 'Sell'}
                   {/* A digital has no position size — it pays one fixed amount —
                       so quoting ×1 beside it would only mislead. */}
-                  {digital ? ' · fixed payout' : ' · ×' + trade.multiplier}
+                  {overUnder
+                    ? ' · ' + overUnder + ' ' + (trade.barrierPrice ?? '')
+                    : digital
+                    ? ' · fixed payout'
+                    : ' · ×' + trade.multiplier}
                 </div>
                 <div className="stake tnum">{usd(toUsd(trade.stake))}</div>
                 <div className="entry tnum">

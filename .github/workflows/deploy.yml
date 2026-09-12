@@ -1,0 +1,66 @@
+name: Deploy to Render
+
+# Render's own auto-deploy stopped firing on push: the service has autoDeploy
+# enabled and the correct branch, yet every deploy for a whole day was triggered
+# by hand through the API. A push that silently does not deploy is the worst
+# failure mode there is — you believe a fix is live when it is not — so this
+# does the same job from a place we can see.
+#
+# It is safe to leave running even once Render's own hook is repaired: a second
+# deploy request for a commit already being deployed is a no-op on Render's side.
+#
+# SETUP — one secret, once:
+#   Render dashboard -> service "fpesa" -> Settings -> Deploy Hook -> copy URL
+#   GitHub -> repo Settings -> Secrets and variables -> Actions -> New secret
+#     Name:  RENDER_DEPLOY_HOOK
+#     Value: the URL you copied
+#
+# A deploy hook rather than an API key on purpose: the hook can only trigger a
+# deploy of this one service, where an API key would grant this workflow full
+# control of the whole Render account.
+
+on:
+  push:
+    branches: [main]
+  # So a deploy can be forced from the Actions tab without an empty commit.
+  workflow_dispatch:
+
+concurrency:
+  # A burst of pushes should land one deploy of the newest commit, not a queue
+  # of deploys of superseded ones.
+  group: render-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          set -uo pipefail
+
+          if [ -z "${HOOK:-}" ]; then
+            echo "::error::RENDER_DEPLOY_HOOK is not set — nothing was deployed."
+            echo "Add it under Settings -> Secrets and variables -> Actions."
+            echo "The URL is in Render: service 'fpesa' -> Settings -> Deploy Hook."
+            exit 1
+          fi
+
+          # Retry, because a deploy lost to a transient network error is exactly
+          # the silent non-deploy this workflow exists to prevent.
+          for attempt in 1 2 3; do
+            code=$(curl -sS -X POST -o response.txt -w "%{http_code}" --max-time 30 "$HOOK" || echo 000)
+            echo "attempt $attempt -> HTTP $code"
+            cat response.txt || true
+            echo
+            case "$code" in
+              2*) echo "Deploy requested for ${GITHUB_SHA:0:7}."; exit 0 ;;
+              4*) echo "::error::Render rejected the hook (HTTP $code). Is the URL still valid?"; exit 1 ;;
+            esac
+            sleep $((attempt * 5))
+          done
+
+          echo "::error::Could not reach Render after 3 attempts — nothing was deployed."
+          exit 1

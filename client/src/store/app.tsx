@@ -262,6 +262,10 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       let opening = DEFAULT_CONFIG.symbol;
       if (cfg.status === 'fulfilled') {
         setConfig(cfg.value);
+        // Over/Under is the product now, so the ticket opens on it rather than
+        // making every trader find it. The others stay reachable on the switch
+        // for as long as they are enabled.
+        if (cfg.value.digitsEnabled) setTradeType('DIGITS_OVER');
         if (cfg.value.desk) setDesk(cfg.value.desk);
         setStake(String(cfg.value.minStakeUsd));
         if (cfg.value.durations.includes(10)) setDuration(10);

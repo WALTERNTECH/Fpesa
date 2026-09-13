@@ -213,6 +213,11 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
   // not theirs.
   const [accountMode, setAccountMode] = useState<AccountMode>('real');
   const [openTrades, setOpenTrades] = useState<Trade[]>([]);
+  // Mirrors openTrades for the reconcile above, which needs the previous list
+  // without taking a dependency on it and re-running on every tick.
+  const openTradesRef = useRef<Trade[]>([]);
+  /** Trades whose result has already been shown, so it is never shown twice. */
+  const announced = useRef<Set<string>>(new Set());
   const [modal, setModal] = useState<ModalKind>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [stake, setStake] = useState<string>(String(DEFAULT_CONFIG.minStakeUsd));
@@ -366,6 +371,77 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
 
   useEffect(() => marketSocket.onStatus(setConnected), []);
 
+  // Guarded: a zero rate would turn every figure on the screen into Infinity.
+  // Declared up here because the settlement toast below converts with it, and
+  // a dependency array is evaluated during render — referencing these further
+  // down the body would throw before the component ever mounted.
+  const rate = config.usdKes > 0 ? config.usdKes : 129;
+  const toUsd = useCallback(
+    (kes: number) => (Number.isFinite(kes) ? kes / rate : 0),
+    [rate]
+  );
+  const toKes = useCallback(
+    (dollars: number) => (Number.isFinite(dollars) ? Math.round(dollars * rate * 100) / 100 : 0),
+    [rate]
+  );
+
+  /**
+   * Says how a position ended.
+   *
+   * Shared by the socket path and the recovery path below: a trader whose
+   * position disappears with no word on whether it won is worse off than one
+   * who was never shown it closing at all, and two copies of this would drift.
+   */
+  const announceSettled = useCallback(
+    (trade: Trade): void => {
+      // Said once per trade, whichever path gets there first. The socket
+      // removes a settled position from state a render before the mirror ref
+      // catches up, and a reconcile landing in that gap would otherwise
+      // announce the same result a second time.
+      if (announced.current.has(trade.id)) return;
+      announced.current.add(trade.id);
+      // Bounded: a long session should not accumulate ids without limit.
+      if (announced.current.size > 500) {
+        announced.current = new Set([...announced.current].slice(-250));
+      }
+
+      const profit = trade.profit ?? 0;
+      const closedAt = trade.exitPrice?.toFixed(2) ?? '';
+      // Why it closed matters as much as the number: a stop-out means the
+      // move ran through the whole stake, not that the timer simply ran out.
+      const why =
+        trade.closeReason === 'STOP_OUT'
+          ? 'Stopped out at ' + closedAt
+          : trade.closeReason === 'TAKE_PROFIT'
+            ? 'Max profit hit at ' + closedAt
+            : trade.direction + ' · closed at ' + closedAt;
+
+      if (trade.status === 'WON') {
+        pushToast({
+          tone: 'win',
+          icon: '▲',
+          title: 'Closed  +$' + toUsd(profit).toFixed(2),
+          detail: why,
+        });
+      } else if (trade.status === 'LOST') {
+        pushToast({
+          tone: 'lose',
+          icon: '▼',
+          title: 'Closed  −$' + toUsd(Math.abs(profit)).toFixed(2),
+          detail: why,
+        });
+      } else if (trade.status === 'TIE') {
+        pushToast({
+          tone: 'info',
+          icon: '=',
+          title: 'Closed flat — stake returned',
+          detail: why,
+        });
+      }
+    },
+    [pushToast, toUsd]
+  );
+
   // --------------------------------------------------------- socket routing
   useEffect(() => {
     return marketSocket.on((msg: ServerMessage) => {
@@ -466,56 +542,51 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
             : { ...prev, realBalance: msg.balance };
         });
 
-        const profit = trade.profit ?? 0;
-        const closedAt = trade.exitPrice?.toFixed(2) ?? '';
-        // Why it closed matters as much as the number: a stop-out means the
-        // move ran through the whole stake, not that the timer simply ran out.
-        const why =
-          trade.closeReason === 'STOP_OUT'
-            ? 'Stopped out at ' + closedAt
-            : trade.closeReason === 'TAKE_PROFIT'
-              ? 'Max profit hit at ' + closedAt
-              : trade.direction + ' · closed at ' + closedAt;
-
-        if (trade.status === 'WON') {
-          pushToast({
-            tone: 'win',
-            icon: '▲',
-            title: 'Closed  +$' + toUsd(profit).toFixed(2),
-            detail: why,
-          });
-        } else if (trade.status === 'LOST') {
-          pushToast({
-            tone: 'lose',
-            icon: '▼',
-            title: 'Closed  −$' + toUsd(Math.abs(profit)).toFixed(2),
-            detail: why,
-          });
-        } else if (trade.status === 'TIE') {
-          pushToast({
-            tone: 'info',
-            icon: '=',
-            title: 'Closed flat — stake returned',
-            detail: why,
-          });
-        }
+        announceSettled(trade);
       }
     });
-  }, [pushToast]);
+  }, [pushToast, announceSettled]);
 
   // Rehydrate live positions after a refresh so countdowns survive reloads.
   const loadOpenTrades = useCallback(async () => {
     if (!user) {
       setOpenTrades([]);
+      openTradesRef.current = [];
       return;
     }
     try {
       const res = await api.get<{ trades: Trade[] }>('/trades/open');
+
+      // Anything that was on screen and is no longer open settled while this
+      // client was not listening. It has already been decided and paid; all
+      // that is missing is the trader being told, so go and ask what happened
+      // rather than letting the position disappear without a word.
+      const stillOpen = new Set(res.trades.map((t) => t.id));
+      const vanished = openTradesRef.current
+        .filter((t) => !stillOpen.has(t.id))
+        .map((t) => t.id);
+
+      openTradesRef.current = res.trades;
       setOpenTrades(res.trades);
+
+      if (vanished.length > 0) {
+        try {
+          const done = await api.get<{ trades: Trade[] }>(
+            '/trades/results?ids=' + vanished.map(encodeURIComponent).join(',')
+          );
+          for (const trade of done.trades) announceSettled(trade);
+        } catch {
+          // The position is cleared either way; only the notice is lost.
+        }
+      }
     } catch {
       // Non-fatal: the panel simply starts empty.
     }
-  }, [user]);
+  }, [user, announceSettled]);
+
+  useEffect(() => {
+    openTradesRef.current = openTrades;
+  }, [openTrades]);
 
   useEffect(() => {
     void loadOpenTrades();
@@ -625,16 +696,6 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
 
   const balance = user ? (accountMode === 'demo' ? user.demoBalance : user.realBalance) : 0;
 
-  // Guarded: a zero rate would turn every figure on the screen into Infinity.
-  const rate = config.usdKes > 0 ? config.usdKes : 129;
-  const toUsd = useCallback(
-    (kes: number) => (Number.isFinite(kes) ? kes / rate : 0),
-    [rate]
-  );
-  const toKes = useCallback(
-    (dollars: number) => (Number.isFinite(dollars) ? Math.round(dollars * rate * 100) / 100 : 0),
-    [rate]
-  );
 
   /**
    * The active instrument. Multipliers differ per market — they scale inversely

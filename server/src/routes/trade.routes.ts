@@ -344,6 +344,41 @@ tradeRouter.get('/open', requireAuth, async (req, res) => {
  * `opened_at`, because a position opened at 23:59:58 and closed at 00:00:03
  * belongs to the day it resolved — that is the day its money moved.
  */
+/**
+ * The outcome of specific trades, by id.
+ *
+ * A settlement normally reaches the trader as a socket message. When that
+ * message is missed — a deploy, a sleeping phone, a dropped connection — the
+ * client notices the position has gone from /open and asks here what happened
+ * to it, so a position never just vanishes without a result.
+ *
+ * Scoped to the caller's own trades, so an id belonging to anyone else simply
+ * is not found rather than being readable.
+ */
+tradeRouter.get('/results', requireAuth, async (req, res) => {
+  const raw = typeof req.query.ids === 'string' ? req.query.ids : '';
+  const ids = raw.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 20);
+  if (ids.length === 0) {
+    res.json({ trades: [] });
+    return;
+  }
+
+  const { data, error } = await db
+    .from('trades')
+    .select('*')
+    .eq('user_id', req.user!.id)
+    .in('id', ids)
+    .neq('status', 'OPEN');
+
+  if (error) {
+    console.error('[trade] results failed:', error.message);
+    res.status(500).json({ error: 'LOAD_FAILED', message: 'Could not load those trades.' });
+    return;
+  }
+
+  res.json({ trades: ((data ?? []) as TradeRow[]).map(toPublicTrade) });
+});
+
 tradeRouter.get('/history', requireAuth, async (req, res) => {
   const mode = req.query.mode === 'demo' ? 'demo' : 'real';
   const limit = Math.min(Number(req.query.limit ?? 300) || 300, 1000);

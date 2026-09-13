@@ -83,6 +83,8 @@ export type MarketScan = {
 
 export type ScanReport = {
   ts: number;
+  /** Pre-production presentation value — see the server's digit-scan service. */
+  conviction: number;
   markets: MarketScan[];
   best: MarketScan | null;
   note: string;

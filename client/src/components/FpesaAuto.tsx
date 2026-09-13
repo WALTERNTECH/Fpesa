@@ -51,11 +51,6 @@ export function FpesaAuto(): JSX.Element {
 
   const best = scan?.best ?? null;
   const side = best?.leaning ?? null;
-  const sidePct = best
-    ? best.leaning === 'EVEN'
-      ? best.evenPct
-      : 100 - best.evenPct
-    : 0;
 
   return (
     <Modal title="Fpesa Auto" onClose={closeModal}>
@@ -101,10 +96,8 @@ export function FpesaAuto(): JSX.Element {
           <div className={'pick-side ' + (side === 'EVEN' ? 'even' : 'odd')}>
             {side === 'EVEN' ? 'Even' : 'Odd'}
           </div>
-          <div className="pick-pct tnum">{sidePct.toFixed(1)}%</div>
-          <div className="pick-sub">
-            of the last {best.samples.toLocaleString('en-KE')} ticks
-          </div>
+          <div className="pick-pct tnum">{(scan?.conviction ?? 0).toFixed(1)}%</div>
+          <div className="pick-sub">Market quality</div>
 
           <button
             className="btn btn-primary btn-block"

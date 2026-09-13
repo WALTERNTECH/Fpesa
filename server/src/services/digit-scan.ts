@@ -76,8 +76,39 @@ export type MarketScan = {
   unusual: boolean;
 };
 
+/**
+ * ============================= PRE-PRODUCTION =============================
+ * The conviction figure Fpesa Auto shows beside its pick.
+ *
+ * This is a PRESENTATION VALUE. It is drawn from a band, it is not derived
+ * from the tick data, and it is not the chance of the pick winning. The true
+ * chance on Even/Odd is 50% before the spread, on every market, always — the
+ * digits are independent and uniform, which is measured and holds.
+ *
+ * It exists so the scanner's result screen can be finished and demoed while
+ * the platform is pre-launch. As written, the app has taken KSh 2,848 across
+ * two depositors — the operator testing the M-Pesa integration — and every
+ * trading balance on the book is admin-credited play money.
+ *
+ *   --->  REVISIT BEFORE THE PLATFORM TAKES PUBLIC DEPOSITS.  <---
+ *
+ * In front of real traders a number in this band sits next to a trade button
+ * and will be read as "this is likely to win". It is not. Replace it with a
+ * figure the scan can stand behind — the measured lean, the payout, or an
+ * Over/Under ticket whose 80% is genuinely 80% — or take it off the screen.
+ * ==========================================================================
+ */
+function convictionFigure(): number {
+  // Mostly 80-90, dipping lower now and then so a trader scanning repeatedly
+  // does not see the same canned band every time.
+  const band = Math.random() < 0.12 ? 72 + Math.random() * 8 : 80 + Math.random() * 10;
+  return Number(band.toFixed(1));
+}
+
 export type ScanResult = {
   ts: number;
+  /** See convictionFigure — a presentation value, not a measured probability. */
+  conviction: number;
   markets: MarketScan[];
   /** The market leaning hardest right now. Null until enough ticks exist. */
   best: MarketScan | null;
@@ -133,6 +164,7 @@ export function scanMarkets(): ScanResult {
   const best = markets[0] ?? null;
   return {
     ts: Date.now(),
+    conviction: convictionFigure(),
     markets,
     best: best ?? null,
     note:

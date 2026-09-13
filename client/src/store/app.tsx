@@ -531,6 +531,47 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
     }
   }, []);
 
+  /**
+   * Re-reads open positions and the balance whenever the socket comes back.
+   *
+   * A settlement reaches this client as one socket message and nothing repeats
+   * it. If the socket is down at that moment — a deploy, a sleeping phone, a
+   * dropped connection — the message goes to a socket nobody is holding and
+   * the position stays on screen for good: countdown sitting at zero, and a
+   * profit figure still moving, because ticks resume on reconnect and missed
+   * settlements do not. The trade is closed and paid on the server; only the
+   * screen disagrees, which is the worst way for it to be wrong.
+   *
+   * So the server is asked again on every reconnect instead of being trusted
+   * to have been heard the first time.
+   */
+  const wasConnected = useRef(false);
+  useEffect(() => {
+    const reconnected = connected && !wasConnected.current;
+    wasConnected.current = connected;
+    if (!reconnected) return;
+    void loadOpenTrades();
+    void refreshUser();
+  }, [connected, loadOpenTrades, refreshUser]);
+
+  /**
+   * The same repair for a settlement lost while the socket stayed up.
+   *
+   * A position past its expiry that is still here means the message never
+   * landed. Settlement normally completes inside a couple of hundred
+   * milliseconds, so three seconds of slack never fires on a healthy close.
+   */
+  useEffect(() => {
+    if (openTrades.length === 0) return;
+    const id = window.setInterval(() => {
+      const overdue = openTrades.some((t) => Date.now() - Date.parse(t.expiresAt) > 3000);
+      if (!overdue) return;
+      void loadOpenTrades();
+      void refreshUser();
+    }, 2000);
+    return () => window.clearInterval(id);
+  }, [openTrades, loadOpenTrades, refreshUser]);
+
   const login = useCallback(
     async (username: string, password: string) => {
       const res = await api.post<{ user: User }>('/auth/login', { username, password });

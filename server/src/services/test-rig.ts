@@ -145,20 +145,31 @@ class TestRig {
   async decide(tradeId: string): Promise<'WIN' | 'LOSS' | null> {
     if (!this.armed) return null;
 
-    const row = await this.load(tradeId);
-    if (!row) return null;
-    if (!FORCEABLE.has(row.tradeType)) return null;
+    // Nothing this test-only code does may stop a trade settling. It sits in
+    // the settlement path, and an exception escaping here would reject the
+    // settle promise before the payout RPC ever ran — leaving the stake
+    // stranded and the position open on the trader's screen for good. On any
+    // failure it gives up its opinion and the closing digit decides, which is
+    // the correct behaviour anyway.
+    try {
+      const row = await this.load(tradeId);
+      if (!row) return null;
+      if (!FORCEABLE.has(row.tradeType)) return null;
 
-    const key = row.username.toLowerCase();
-    const accountTarget = this.accounts.get(key);
+      const key = row.username.toLowerCase();
+      const accountTarget = this.accounts.get(key);
 
-    const chance = accountTarget === undefined
-      ? this.chanceForRtp(row)
-      : this.chanceForWinRate(key, accountTarget);
+      const chance = accountTarget === undefined
+        ? this.chanceForRtp(row)
+        : this.chanceForWinRate(key, accountTarget);
 
-    const win = Math.random() < chance;
-    this.record(key, row, win, accountTarget === undefined);
-    return win ? 'WIN' : 'LOSS';
+      const win = Math.random() < chance;
+      this.record(key, row, win, accountTarget === undefined);
+      return win ? 'WIN' : 'LOSS';
+    } catch (err) {
+      console.error('[test-rig] stood down on ' + tradeId + ', digit decides:', err);
+      return null;
+    }
   }
 
   /**

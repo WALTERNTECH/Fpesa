@@ -1,6 +1,23 @@
 import type { Direction, Trade } from './types';
 
 /**
+ * The four last-digit products.
+ *
+ * Listed in one place because they have to be treated alike everywhere and
+ * were not: Even and Odd were missing from the running-profit and margin
+ * checks, so they fell through to the scaled formula and showed a profit
+ * swinging above and below zero on a ticket that pays one fixed amount.
+ */
+export function isDigitTrade(trade: Trade): boolean {
+  return (
+    trade.tradeType === 'DIGITS_OVER' ||
+    trade.tradeType === 'DIGITS_UNDER' ||
+    trade.tradeType === 'DIGITS_EVEN' ||
+    trade.tradeType === 'DIGITS_ODD'
+  );
+}
+
+/**
  * Running profit on an open position.
  *
  * Mirrors `fpesa_settle_trade` exactly — same formula, same clamps — so the
@@ -16,12 +33,11 @@ export function unrealisedProfit(trade: Trade, price: number): number {
   if (trade.tradeType === 'DIGITAL') {
     return digitalWinning(trade, price) ? trade.maxProfit : -trade.stake;
   }
-  // Over/Under is decided by the CLOSING digit, so nothing about the current
-  // price says anything about the outcome. Showing a running win or loss would
-  // be inventing information — it is simply unresolved until it settles.
-  if (trade.tradeType === 'DIGITS_OVER' || trade.tradeType === 'DIGITS_UNDER') {
-    return 0;
-  }
+  // Every digit ticket is decided by the CLOSING digit, so nothing about the
+  // current price says anything about the outcome. Showing a running win or
+  // loss would be inventing information — it is simply unresolved until it
+  // settles.
+  if (isDigitTrade(trade)) return 0;
   const move = (price - trade.entryPrice) / trade.entryPrice;
   const signed = trade.direction === 'BUY' ? move : -move;
   const raw = trade.stake * trade.multiplier * signed;
@@ -49,10 +65,8 @@ export function marginUsed(trade: Trade, price: number): number {
   if (trade.tradeType === 'DIGITAL') {
     return digitalWinning(trade, price) ? 0 : 1;
   }
-  // Nothing is being eaten away on an Over/Under; it resolves in one step.
-  if (trade.tradeType === 'DIGITS_OVER' || trade.tradeType === 'DIGITS_UNDER') {
-    return 0;
-  }
+  // Nothing is being eaten away on a digit ticket; it resolves in one step.
+  if (isDigitTrade(trade)) return 0;
   const loss = Math.min(unrealisedProfit(trade, price), 0);
   return Math.min(Math.abs(loss) / trade.stake, 1);
 }

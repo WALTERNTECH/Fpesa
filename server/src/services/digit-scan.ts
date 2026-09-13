@@ -88,7 +88,7 @@ export type ScanResult = {
   note: string;
 };
 
-const MIN_SAMPLES = 50;
+const MIN_SAMPLES = 300;
 
 function scanOne(symbol: string): MarketScan | null {
   const buf = buffers.get(symbol);
@@ -126,7 +126,8 @@ export function scanMarkets(): ScanResult {
     const m = scanOne(i.symbol);
     if (m) markets.push(m);
   }
-  // Hardest lean first. That is the only ordering the data supports.
+  // Hardest lean first. That is the only ordering the data supports — and
+  // because the feed is fair, which market tops it moves around on its own.
   markets.sort((a, z) => Math.abs(z.z) - Math.abs(a.z));
 
   const best = markets[0] ?? null;

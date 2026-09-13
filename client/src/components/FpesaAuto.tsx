@@ -13,7 +13,7 @@ const SCAN_MS = 10_000;
  * not guessed. The result sets the ticket in one tap.
  */
 export function FpesaAuto(): JSX.Element {
-  const { scan, runScan, closeModal, setSymbol, setDigitMarket, config } = useApp();
+  const { scan, runScan, closeModal, setSymbol, setDigitMarket, submitTrade, config } = useApp();
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState('');
   const [done, setDone] = useState(false);
@@ -113,9 +113,12 @@ export function FpesaAuto(): JSX.Element {
               setSymbol(best.symbol);
               setDigitMarket('EVEN_ODD');
               closeModal();
+              // Opens the position on the picked side straight away: the point
+              // of the pick is the trade, not a filled-in form.
+              void submitTrade('BUY', side === 'EVEN' ? 'EVEN' : 'ODD');
             }}
           >
-            Use this pick
+            Trade {side === 'EVEN' ? 'Even' : 'Odd'} on {best.name}
           </button>
           <button className="btn btn-dark btn-block" style={{ marginTop: 8 }} onClick={start}>
             Scan again

@@ -1,29 +1,23 @@
 import { useMemo } from 'react';
 import { useApp } from '../store/app';
 
-const R = 17;
+const R = 16;
 const C = 2 * Math.PI * R;
 
 /**
- * The digit ring.
+ * The digit track.
  *
- * On a digit market the price level is incidental — what settles the trade is
- * the final digit — so this is the instrument the trader is actually reading,
- * and it sits directly under the chart where the price would be.
+ * One marker walks the row rather than ten markers taking turns lighting up.
+ * A single thing moving is what makes the market look alive — ten things
+ * blinking reads as a dashboard, and a marker that never moves off the first
+ * digit reads as broken.
  *
- * Each digit is a ring whose arc is that digit's share of the window, so an
- * even spread reads as ten matching rings at a glance. The digit the market
- * just touched lights up and carries the pointer. Most and least frequent are
- * tinted, because those are the two a trader looks for.
- *
- * The count is stated rather than implied: a spread over forty ticks is not the
- * claim two thousand would be, and rings drawn from forty ticks look far more
- * meaningful than they are.
+ * The marker slides on a transform, so it travels the distance between two
+ * digits instead of jumping, and the ring it lands in flares as it arrives.
  */
 export function DigitTicker(): JSX.Element | null {
   const { digitHistory, config } = useApp();
-  // Changes on every tick, so the ring that just landed remounts its pulse and
-  // replays the animation rather than only playing it the first time.
+  // Changes on every tick, so the arriving ring remounts its flare and replays.
   const beat = digitHistory.length;
 
   const { pct, total, latest, hi, lo } = useMemo(() => {
@@ -31,56 +25,58 @@ export function DigitTicker(): JSX.Element | null {
     for (const d of digitHistory) counts[d] = (counts[d] ?? 0) + 1;
     const n = digitHistory.length;
     const p = counts.map((c) => (n > 0 ? (c / n) * 100 : 0));
-    let hiD = -1;
-    let loD = -1;
-    if (n > 0) {
-      hiD = p.indexOf(Math.max(...p));
-      loD = p.indexOf(Math.min(...p));
-    }
     return {
       pct: p,
       total: n,
       latest: n > 0 ? digitHistory[n - 1]! : -1,
-      hi: hiD,
-      lo: loD,
+      hi: n > 0 ? p.indexOf(Math.max(...p)) : -1,
+      lo: n > 0 ? p.indexOf(Math.min(...p)) : -1,
     };
   }, [digitHistory]);
 
   if (!config.digitsEnabled) return null;
 
+  // Centre of the active cell: each cell is a tenth of the row.
+  const markerAt = latest >= 0 ? latest * 10 + 5 : 5;
+
   return (
-    <div className="ring-card">
-      <div className="ring-row" aria-label="Last digit distribution">
+    <div className="track">
+      <div className="track-row" aria-label="Last digit">
         {pct.map((p, d) => {
-          // Scaled against a tenth, so an even market sits at a full ring.
           const filled = Math.max(0, Math.min(1, p / 10));
           const tone = d === hi ? ' hi' : d === lo ? ' lo' : '';
           const now = d === latest ? ' now' : '';
           return (
-            <div key={d} className={'ring' + tone + now}>
-              <svg viewBox="0 0 40 40" aria-hidden="true">
-                <circle className="r-track" cx="20" cy="20" r={R} fill="none" strokeWidth="3" />
+            <div key={d} className={'cell' + tone + now}>
+              <svg viewBox="0 0 36 36" aria-hidden="true">
+                <circle className="c-track" cx="18" cy="18" r={R} fill="none" strokeWidth="2.5" />
                 <circle
-                  className="r-arc"
-                  cx="20"
-                  cy="20"
+                  className="c-arc"
+                  cx="18"
+                  cy="18"
                   r={R}
                   fill="none"
-                  strokeWidth="3"
+                  strokeWidth="2.5"
                   strokeLinecap="round"
                   strokeDasharray={C}
                   strokeDashoffset={C * (1 - filled)}
-                  transform="rotate(-90 20 20)"
+                  transform="rotate(-90 18 18)"
                 />
               </svg>
-              {/* Keyed on the tick, so each touch restarts the flare. */}
-              {d === latest && <span key={beat} className="r-flare" aria-hidden="true" />}
-              <span className="r-d tnum">{d}</span>
-              <span className="r-p tnum">{total > 0 ? p.toFixed(1) : '—'}</span>
-              <span className="r-mark" aria-hidden="true" />
+              {d === latest && <span key={beat} className="c-flare" aria-hidden="true" />}
+              <span className="c-d tnum">{d}</span>
+              <span className="c-p tnum">{total > 0 ? p.toFixed(1) : '—'}</span>
             </div>
           );
         })}
+
+        {/* One marker, moving. It rides above the row and slides to the digit
+            the market just touched. */}
+        <span
+          className={'marker' + (latest >= 0 ? ' live' : '')}
+          style={{ left: markerAt + '%' }}
+          aria-hidden="true"
+        />
       </div>
     </div>
   );

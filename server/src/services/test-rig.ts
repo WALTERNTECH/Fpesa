@@ -118,6 +118,9 @@ class TestRig {
       armed: true,
       targetRtp: env.testRig.rtp,
       realisedRtp: realisedRtp === null ? null : Number(realisedRtp.toFixed(4)),
+      // Accounts with their own win rate are steered separately and are not in
+      // the RTP figures above.
+      rtpPoolStaked: Number(this.staked.toFixed(2)),
       forcedTrades: [...this.tally.values()].reduce((a, t) => a + t.trades, 0),
       accounts: Object.fromEntries(
         [...this.accounts].map(([name, target]) => {
@@ -154,7 +157,7 @@ class TestRig {
       : this.chanceForWinRate(key, accountTarget);
 
     const win = Math.random() < chance;
-    this.record(key, row, win);
+    this.record(key, row, win, accountTarget === undefined);
     return win ? 'WIN' : 'LOSS';
   }
 
@@ -180,9 +183,20 @@ class TestRig {
     return Math.min(1, Math.max(0, wanted));
   }
 
-  private record(key: string, row: Settling, win: boolean): void {
-    this.staked += row.stake;
-    this.paid += win ? row.stake + row.winProfit : 0;
+  /**
+   * `inRtpPool` keeps the two targets independent.
+   *
+   * An account on a fixed win rate must not be counted into the RTP ledger. If
+   * it were, an account winning 85% would drag realised RTP above target and
+   * the controller would claw it back out of everyone else — so setting one
+   * knob would silently move the other. Accounts with an override are steered
+   * by their own target and are invisible to the RTP pool.
+   */
+  private record(key: string, row: Settling, win: boolean, inRtpPool: boolean): void {
+    if (inRtpPool) {
+      this.staked += row.stake;
+      this.paid += win ? row.stake + row.winProfit : 0;
+    }
     const t = this.tally.get(key) ?? { trades: 0, wins: 0 };
     t.trades += 1;
     if (win) t.wins += 1;

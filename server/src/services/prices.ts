@@ -64,14 +64,14 @@ const VOL_WINDOW = 240;
 function buildReporter(symbol: string, startHash: string | null): ChainReporter {
   let prevChainHash = startHash;
   return {
-    announce: (c) => {
+    announce: (c, precision) => {
       const commitment = { symbol, ...c };
       const chainHash = chainHashOf(prevChainHash, commitment);
       const linkedFrom = prevChainHash;
       // Advanced immediately so the next epoch links correctly even while this
       // write is still in flight.
       prevChainHash = chainHash;
-      void recordEpoch(commitment, linkedFrom, chainHash);
+      void recordEpoch(commitment, linkedFrom, chainHash, precision);
     },
     reveal: (epoch, seed, endedAt) => {
       void revealEpoch(symbol, epoch, seed, endedAt);
@@ -105,6 +105,7 @@ class InstrumentFeed {
         instrument.sigma,
         env.synth.drift,
         instrument.basePrice,
+        instrument.precision,
         {
           // Continue the numbering rather than restarting at 1. A restart used
           // to orphan every epoch before it.

@@ -213,6 +213,7 @@ export async function audit(symbol: string): Promise<{
         tickMs: e.tickMs,
         sigma: e.sigma,
         drift: e.drift,
+        precision: e.precision,
       })
     );
   }

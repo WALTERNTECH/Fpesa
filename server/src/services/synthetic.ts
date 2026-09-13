@@ -35,6 +35,13 @@ export type EpochRecord = {
   tickMs: number;
   sigma: number;
   drift: number;
+  /**
+   * Decimal places this epoch's prices were rounded to. Recorded rather than
+   * assumed, because it is per-instrument and it has already changed once: the
+   * generator used to round everything to 2, which left the third decimal of
+   * every FPX10 and FPX25 price permanently zero.
+   */
+  precision: number;
 };
 
 const TWO_POW_53 = 9007199254740992;
@@ -69,15 +76,22 @@ export function replayEpoch(params: {
   tickMs: number;
   sigma: number;
   drift: number;
+  /**
+   * Decimal places to round to. Defaults to 2 because every epoch published
+   * before the generator learned about per-instrument precision was produced
+   * at 2, and those must still replay to the prices that were published.
+   */
+  precision?: number;
 }): number[] {
   const dt = params.tickMs / 1000;
+  const factor = Math.pow(10, params.precision ?? 2);
   const out: number[] = [];
   let price = params.startPrice;
   for (let i = 0; i < params.ticks; i++) {
     const z = normalFrom(params.seed, params.epoch + ':' + i);
     const logReturn = params.drift * dt + params.sigma * Math.sqrt(dt) * z;
     price = price * Math.exp(logReturn);
-    price = Math.round(price * 100) / 100;
+    price = Math.round(price * factor) / factor;
     if (price < 0.01) price = 0.01;
     out.push(price);
   }
@@ -95,16 +109,20 @@ export function replayEpoch(params: {
  */
 export type ChainReporter = {
   /** Called at rotation, before the new epoch produces a tick. */
-  announce: (commitment: {
-    epoch: number;
-    seedHash: string;
-    startPrice: number;
-    tickMs: number;
-    epochMs: number;
-    sigma: number;
-    drift: number;
-    startedAt: number;
-  }) => void;
+  announce: (
+    commitment: {
+      epoch: number;
+      seedHash: string;
+      startPrice: number;
+      tickMs: number;
+      epochMs: number;
+      sigma: number;
+      drift: number;
+      startedAt: number;
+    },
+    /** Recorded alongside the commitment; not part of the chain hash. */
+    precision: number
+  ) => void;
   /** Called when an epoch closes and its seed becomes publishable. */
   reveal: (epoch: number, seed: string, endedAt: number) => void;
 };
@@ -126,6 +144,17 @@ export class SyntheticEngine {
     private readonly sigma: number,
     private readonly drift: number,
     basePrice: number,
+    /**
+     * Decimal places this instrument quotes to.
+     *
+     * This used to be hardcoded to 2 here while the instrument table declared
+     * 3 for FPX10 and FPX25. The consequence was not cosmetic: the third
+     * decimal of those two instruments was always zero, so their last digit
+     * was always zero — every Even ticket won, every Odd ticket lost, and the
+     * scanner saw a permanent 100% even lean that no other market could beat.
+     * The generator has to round where the instrument says it rounds.
+     */
+    private readonly precision: number,
     /**
      * Where this symbol's chain left off, so the numbering continues across a
      * restart instead of starting again at 1. Before this existed, every deploy
@@ -170,21 +199,25 @@ export class SyntheticEngine {
       tickMs: this.tickMs,
       sigma: this.sigma,
       drift: this.drift,
+      precision: this.precision,
     });
 
     // Announced before any tick of this epoch exists, which is the only moment
     // at which a commitment means anything.
     this.report(() =>
-      this.reporter?.announce({
-        epoch: this.epoch,
-        seedHash,
-        startPrice: this.startPrice,
-        tickMs: this.tickMs,
-        epochMs: this.epochMs,
-        sigma: this.sigma,
-        drift: this.drift,
-        startedAt: this.startedAt,
-      })
+      this.reporter?.announce(
+        {
+          epoch: this.epoch,
+          seedHash,
+          startPrice: this.startPrice,
+          tickMs: this.tickMs,
+          epochMs: this.epochMs,
+          sigma: this.sigma,
+          drift: this.drift,
+          startedAt: this.startedAt,
+        },
+        this.precision
+      )
     );
     // Keep a day of epochs available for anyone checking their trades.
     const keep = Math.ceil((24 * 60 * 60 * 1000) / this.epochMs) + 2;
@@ -217,7 +250,8 @@ export class SyntheticEngine {
     const next = this.price * Math.exp(logReturn);
 
     this.tickIndex += 1;
-    this.price = Math.max(Math.round(next * 100) / 100, 0.01);
+    const factor = Math.pow(10, this.precision);
+    this.price = Math.max(Math.round(next * factor) / factor, 0.01);
     return this.price;
   }
 
@@ -291,6 +325,8 @@ export function buildSyntheticEngine(): SyntheticEngine {
     env.synth.epochMs,
     env.synth.sigma,
     env.synth.drift,
-    env.synth.basePrice
+    env.synth.basePrice,
+    // The reference instrument quotes to 2, and so does this standalone engine.
+    2
   );
 }

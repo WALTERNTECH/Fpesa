@@ -99,6 +99,7 @@ type Row = {
   started_at: string;
   ended_at: string | null;
   seed: string | null;
+  price_precision: number | null;
 };
 
 /** Where each symbol's chain currently ends, so a restart continues it. */
@@ -135,10 +136,21 @@ export function unrecordedCount(): number {
   return unrecorded;
 }
 
+/**
+ * Appends one epoch to the published chain.
+ *
+ * `precision` is recorded but is not part of `EpochCommitment`, because that
+ * type is exactly the bytes `canonical` hashes and changing it would change
+ * every future chain hash. It does not need committing separately: precision
+ * is a fixed public property of the symbol, and the symbol is already in the
+ * hash. It is stored so a replay of an old epoch still reproduces it, since
+ * the generator used to round every instrument to 2 decimals.
+ */
 export async function recordEpoch(
   c: EpochCommitment,
   prevChainHash: string | null,
-  chainHash: string
+  chainHash: string,
+  precision: number
 ): Promise<boolean> {
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt > 0) await new Promise((r) => setTimeout(r, 500 * attempt));
@@ -154,6 +166,7 @@ export async function recordEpoch(
       p_sigma: c.sigma,
       p_drift: c.drift,
       p_started_at: new Date(c.startedAt).toISOString(),
+      p_price_precision: precision,
     });
     if (!error) return true;
     // A chain mismatch is not transient and must be loud: it means this process
@@ -215,6 +228,12 @@ export type PublishedEpoch = {
   sigma: number;
   drift: number;
   /**
+   * Decimal places this epoch's prices were rounded to. Published so a replay
+   * reproduces the epoch exactly: epochs recorded before the generator honoured
+   * per-instrument precision were all produced at 2.
+   */
+  precision: number;
+  /**
    * Committed, its window long past, and still without a seed — so its ticks
    * can never be checked. That happens when the process was killed hard enough
    * to skip the shutdown reveal, taking the only copy of the seed with it.
@@ -274,6 +293,8 @@ export async function readChain(symbol: string, limit = 48): Promise<{
       epochMs,
       sigma: Number(r.sigma),
       drift: Number(r.drift),
+      // Rows written before the column existed were all produced at 2.
+      precision: r.price_precision ?? 2,
       // A minute of slack past the window, so the epoch that is currently
       // running is never mistaken for one that was abandoned.
       orphaned: r.seed === null && now > startedAt + epochMs + 60_000,

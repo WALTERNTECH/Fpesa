@@ -59,6 +59,7 @@ type RevealedEpoch = {
   tickMs: number;
   sigma: number;
   drift: number;
+  precision?: number;
 };
 
 export type ReplayEpoch = {
@@ -72,6 +73,11 @@ export type ReplayEpoch = {
   tickMs: number;
   sigma: number;
   drift: number;
+  /**
+   * Decimal places this epoch was generated at. Absent on an epoch published
+   * before the field existed, all of which were produced at 2.
+   */
+  precision: number;
   /** sha256(seed) recomputed here and checked against the published hash. */
   verified: boolean;
 };
@@ -160,6 +166,7 @@ export async function fetchEpochs(symbol: string): Promise<{
       tickMs: e.tickMs,
       sigma: e.sigma,
       drift: e.drift,
+      precision: e.precision ?? 2,
       verified: createHash('sha256').update(e.seed).digest('hex') === e.seedHash,
     }))
     .filter((e) => e.verified);
@@ -380,6 +387,7 @@ export async function runReplay(params: {
       tickMs: record.tickMs,
       sigma,
       drift: record.drift,
+      precision: record.precision,
     });
 
   const liveKnobs: ReplayKnobs = {

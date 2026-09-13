@@ -2180,6 +2180,124 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .pick-side.odd { background: var(--down); }
 .pick-pct { margin-top: 14px; font-size: 40px; font-weight: 700; color: var(--ink); line-height: 1; }
 .pick-sub { margin-top: 5px; font-size: 11.5px; color: var(--subtle); }
+
+/* ====================================================== motion ========== */
+
+/* The ring the market just touched. A ring expanding outward reads as the
+   market arriving at that digit rather than the digit merely being coloured. */
+.r-flare {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  max-width: 100%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  border: 2px solid var(--blue);
+  pointer-events: none;
+  animation: flare 0.6s var(--ease) forwards;
+}
+@keyframes flare {
+  0%   { opacity: 0.85; transform: translateX(-50%) scale(0.72); }
+  70%  { opacity: 0.18; }
+  100% { opacity: 0; transform: translateX(-50%) scale(1.42); }
+}
+
+/* The digit itself takes a short lift, so the eye catches it even mid-scroll. */
+.ring.now .r-d { animation: digit-hit 0.42s var(--ease); }
+@keyframes digit-hit {
+  0%   { transform: scale(1); }
+  32%  { transform: scale(1.28); }
+  100% { transform: scale(1); }
+}
+.ring.now .r-mark { animation: mark-drop 0.34s var(--ease); }
+@keyframes mark-drop {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Arcs ease to their new share rather than jumping, so the distribution reads
+   as settling rather than flickering. */
+.r-arc { transition: stroke-dashoffset 0.5s var(--ease), stroke 0.25s var(--ease); }
+
+/* ---------------------------------------------------------------- the scan */
+/* A sweep behind the ring, so ten seconds reads as work rather than a wait. */
+.scan-ring::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0 78%, rgba(11, 79, 216, 0.16) 88%, transparent 100%);
+  animation: sweep 1.15s linear infinite;
+}
+@keyframes sweep { to { transform: rotate(360deg); } }
+
+.sr-pct { animation: fade 0.3s var(--ease); }
+.scan-stage { animation: stage-in 0.32s var(--ease); }
+@keyframes stage-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* A moving sheen along the progress bar. */
+.scan-bar i { position: relative; overflow: hidden; }
+.scan-bar i::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  animation: sheen 1.1s linear infinite;
+}
+@keyframes sheen { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* --------------------------------------------------------- the pick lands */
+.pick-mkt  { animation: rise 0.42s var(--ease) both; }
+.pick-side { animation: pop-in 0.5s var(--ease) 0.08s both; }
+.pick-pct  { animation: rise 0.45s var(--ease) 0.18s both; }
+.pick-sub  { animation: rise 0.45s var(--ease) 0.26s both; }
+.pick .btn { animation: rise 0.45s var(--ease) 0.34s both; }
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pop-in {
+  0%   { opacity: 0; transform: scale(0.82); }
+  62%  { opacity: 1; transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* ------------------------------------------------------------- the ticket */
+/* Payouts recompute as the stake changes; a short fade stops the figure
+   flickering between values while a trader holds the stepper down. */
+.ou-pay { transition: opacity 0.16s var(--ease); }
+.ou:not(:disabled):active { transform: scale(0.985); }
+.ou, .preset, .dur, .digit, .stake-step { transition: all 0.14s var(--ease); }
+.preset:active, .dur:active, .digit:active { transform: scale(0.94); }
+
+/* The scanner button on the bottom bar breathes, because it is the one thing
+   there a trader might not know to press. */
+.bn-spark { animation: breathe 3.4s var(--ease) infinite; }
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 4px 12px rgba(11, 79, 216, 0.3); }
+  50%      { box-shadow: 0 6px 20px rgba(11, 79, 216, 0.48); }
+}
+
+/* Motion is decoration here; none of it carries meaning on its own, so all of
+   it comes off for anyone who has asked the system for less. */
+@media (prefers-reduced-motion: reduce) {
+  .r-flare,
+  .ring.now .r-d,
+  .ring.now .r-mark,
+  .scan-ring::after,
+  .scan-bar i::after,
+  .sr-pct,
+  .scan-stage,
+  .pick-mkt, .pick-side, .pick-pct, .pick-sub, .pick .btn,
+  .bn-spark {
+    animation: none;
+  }
+  .r-arc, .ou-pay { transition: none; }
+}
 .ring-row {
   display: grid;
   grid-template-columns: repeat(10, 1fr);

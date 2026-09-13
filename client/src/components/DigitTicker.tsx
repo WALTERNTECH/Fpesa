@@ -22,6 +22,9 @@ const C = 2 * Math.PI * R;
  */
 export function DigitTicker(): JSX.Element | null {
   const { digitHistory, config } = useApp();
+  // Changes on every tick, so the ring that just landed remounts its pulse and
+  // replays the animation rather than only playing it the first time.
+  const beat = digitHistory.length;
 
   const { pct, total, latest, hi, lo } = useMemo(() => {
     const counts = new Array(10).fill(0) as number[];
@@ -70,6 +73,8 @@ export function DigitTicker(): JSX.Element | null {
                   transform="rotate(-90 20 20)"
                 />
               </svg>
+              {/* Keyed on the tick, so each touch restarts the flare. */}
+              {d === latest && <span key={beat} className="r-flare" aria-hidden="true" />}
               <span className="r-d tnum">{d}</span>
               <span className="r-p tnum">{total > 0 ? p.toFixed(1) : '—'}</span>
               <span className="r-mark" aria-hidden="true" />

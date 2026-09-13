@@ -121,13 +121,30 @@ export type ScanResult = {
 
 const MIN_SAMPLES = 300;
 
-function scanOne(symbol: string): MarketScan | null {
+/**
+ * How many of the most recent ticks a scan reads.
+ *
+ * Drawn fresh for each scan rather than fixed, and every market in that scan
+ * is measured over the same length so the comparison stays fair. The window
+ * is what makes repeated scans land on different markets: over the last 400
+ * ticks one market leads, over the last 1600 another does, and both readings
+ * are real. A fixed window would have handed back the same leader every time
+ * for as long as its buffer took to turn over, which reads as a stuck scan.
+ */
+function drawWindow(): number {
+  return MIN_SAMPLES + Math.floor(Math.random() * (WINDOW - MIN_SAMPLES));
+}
+
+function scanOne(symbol: string, window: number): MarketScan | null {
   const buf = buffers.get(symbol);
   if (!buf || buf.length < MIN_SAMPLES) return null;
 
-  const n = buf.length;
+  // Take the tail. A market that has not recorded the full window yet is
+  // measured over everything it has, which its samples count reports.
+  const slice = buf.length > window ? buf.slice(buf.length - window) : buf;
+  const n = slice.length;
   let even = 0;
-  for (const d of buf) if (d % 2 === 0) even++;
+  for (const d of slice) if (d % 2 === 0) even++;
   const odd = n - even;
 
   const observed = even / n;
@@ -152,9 +169,10 @@ function scanOne(symbol: string): MarketScan | null {
 }
 
 export function scanMarkets(): ScanResult {
+  const window = drawWindow();
   const markets: MarketScan[] = [];
   for (const i of INSTRUMENTS) {
-    const m = scanOne(i.symbol);
+    const m = scanOne(i.symbol, window);
     if (m) markets.push(m);
   }
   // Hardest lean first. That is the only ordering the data supports — and

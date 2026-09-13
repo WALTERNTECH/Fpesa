@@ -14,6 +14,8 @@ const C = 2 * Math.PI * R;
  *
  * The marker slides on a transform, so it travels the distance between two
  * digits instead of jumping, and the ring it lands in flares as it arrives.
+ * One step is a cell plus the grid gap, which puts the arrow dead centre on
+ * its digit at either end of the row.
  */
 export function DigitTicker(): JSX.Element | null {
   const { digitHistory, config } = useApp();
@@ -36,8 +38,9 @@ export function DigitTicker(): JSX.Element | null {
 
   if (!config.digitsEnabled) return null;
 
-  // Centre of the active cell: each cell is a tenth of the row.
-  const markerAt = latest >= 0 ? latest * 10 + 5 : 5;
+  // One step is the width of a cell (which is the marker's own width, so
+  // 100%) plus the 2px grid gap between cells.
+  const step = Math.max(0, latest);
 
   return (
     <div className="track">
@@ -71,12 +74,15 @@ export function DigitTicker(): JSX.Element | null {
         })}
 
         {/* One marker, moving. It rides above the row and slides to the digit
-            the market just touched. */}
+            the market just touched; the head re-drops on every tick so a
+            repeated digit still shows movement. */}
         <span
           className={'marker' + (latest >= 0 ? ' live' : '')}
-          style={{ left: markerAt + '%' }}
+          style={{ transform: 'translateX(calc(' + step + ' * (100% + 2px)))' }}
           aria-hidden="true"
-        />
+        >
+          <i key={beat} />
+        </span>
       </div>
     </div>
   );

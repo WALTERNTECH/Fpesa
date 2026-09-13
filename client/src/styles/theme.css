@@ -2117,7 +2117,69 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 }
 
 /* ------------------------------------------------------------ digit rings */
-.ring-card { padding: 14px 12px 12px; min-width: 0; }
+.ring-card { padding: 4px 0 2px; min-width: 0; }
+
+/* ------------------------------------------------------------- the ticket */
+.ticket {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-sm);
+}
+.fld { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.fld-k {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--subtle);
+}
+.row2 { display: contents; }
+
+/* ------------------------------------------------------------ scan sheet */
+.scan { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 14px 0 4px; }
+.scan-ring { position: relative; width: 132px; height: 132px; }
+.scan-ring svg { width: 100%; height: 100%; }
+.sr-track { stroke: var(--surface-sunk); }
+.sr-arc { stroke: var(--blue); transition: stroke-dashoffset 0.16s linear; }
+.sr-pct {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.scan-stage { font-size: 13px; font-weight: 600; color: var(--muted); min-height: 18px; }
+.scan-bar { width: 100%; height: 4px; border-radius: 999px; background: var(--surface-sunk); overflow: hidden; }
+.scan-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--blue), #6b46f5);
+  transition: width 0.16s linear;
+}
+
+/* --------------------------------------------------------------- the pick */
+.pick { display: flex; flex-direction: column; align-items: center; padding: 8px 0 4px; }
+.pick-mkt { font-size: 13px; font-weight: 600; color: var(--muted); }
+.pick-side {
+  margin-top: 10px;
+  padding: 8px 26px;
+  border-radius: 999px;
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+}
+.pick-side.even { background: var(--up); }
+.pick-side.odd { background: var(--down); }
+.pick-pct { margin-top: 14px; font-size: 40px; font-weight: 700; color: var(--ink); line-height: 1; }
+.pick-sub { margin-top: 5px; font-size: 11.5px; color: var(--subtle); }
 .ring-row {
   display: grid;
   grid-template-columns: repeat(10, 1fr);

@@ -46,7 +46,7 @@ export function DigitTicker(): JSX.Element | null {
   if (!config.digitsEnabled) return null;
 
   return (
-    <div className="card ring-card">
+    <div className="ring-card">
       <div className="ring-row" aria-label="Last digit distribution">
         {pct.map((p, d) => {
           // Scaled against a tenth, so an even market sits at a full ring.
@@ -76,11 +76,6 @@ export function DigitTicker(): JSX.Element | null {
             </div>
           );
         })}
-      </div>
-      <div className="ring-foot">
-        {total > 0
-          ? total.toLocaleString('en-KE') + ' ticks measured'
-          : 'collecting ticks…'}
       </div>
     </div>
   );

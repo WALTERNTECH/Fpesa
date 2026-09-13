@@ -11,10 +11,6 @@ import { useApp } from '../store/app';
 export function BottomNav(): JSX.Element {
   const { openModal, scanBusy } = useApp();
 
-  const go = (id: string): void => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
   return (
     <nav className="bnav" aria-label="Sections">
       <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
@@ -35,7 +31,7 @@ export function BottomNav(): JSX.Element {
         {scanBusy ? 'Scanning…' : 'Fpesa Auto'}
       </button>
 
-      <button onClick={() => go('history')}>
+      <button onClick={() => openModal('history')}>
         <span className="bn-i" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="9" />

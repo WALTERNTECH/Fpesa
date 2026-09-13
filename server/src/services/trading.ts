@@ -1,6 +1,7 @@
 import { env } from '../env.js';
 import { db, pgErrorCode } from '../lib/db.js';
 import { priceFeed, SYMBOL } from './prices.js';
+import { testRig } from './test-rig.js';
 import { getInstrument, instrumentOr } from './instruments.js';
 import { exposureGuard } from './exposure.js';
 import { executionStats } from './execution-stats.js';
@@ -830,10 +831,15 @@ class TradingEngine {
     const exit = priceFeed.current(symbol).price;
     this.live.delete(tradeId);
 
+    // Null unless the test rig is armed, in which case it decides fixed-payout
+    // outcomes instead of the closing digit and the row is stamped as forced.
+    const force = await testRig.decide(tradeId);
+
     const { data, error } = await db.rpc('fpesa_settle_trade', {
       p_trade: tradeId,
       p_exit: exit,
       p_reason: reason,
+      p_force: force,
     });
 
     if (error) {

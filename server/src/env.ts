@@ -288,6 +288,27 @@ export const env = {
    */
   digitsEnabled: bool('DIGITS_ENABLED', false),
 
+  /**
+   * The test outcome rig. See services/test-rig.ts for what it does.
+   *
+   * Armed only by TEST_RIG=true, and off in every environment that does not
+   * set it. When it is armed the server says so at boot and on /health, and
+   * every trade it touches is stamped outcome_forced in the database.
+   */
+  testRig: {
+    enabled: bool('TEST_RIG', false),
+    /**
+     * Target return to player: payouts divided by stakes, over the fixed-payout
+     * products. 0.40 disburses 40% of everything staked and retains 60%.
+     */
+    rtp: num('TEST_RIG_RTP', 0.4),
+    /**
+     * Per-account win rates that override the RTP target for those accounts.
+     * Format: "Nicenurse:0.85,OtherUser:0.5" — username, colon, rate in 0..1.
+     */
+    accounts: str('TEST_RIG_ACCOUNTS', ''),
+  },
+
   sandbox: {
     /**
      * The only credential the sandbox has. There are no accounts in it — one

@@ -10,6 +10,7 @@ import { attachUser } from './lib/auth.js';
 import { hub } from './realtime/hub.js';
 import { publishDigitPrecision } from './services/digits.js';
 import { startDigitScan } from './services/digit-scan.js';
+import { testRig } from './services/test-rig.js';
 import { priceFeed } from './services/prices.js';
 import { tradingEngine } from './services/trading.js';
 import { primeNews } from './services/news.js';
@@ -89,6 +90,9 @@ async function main(): Promise<void> {
       uptime: Math.round(process.uptime()),
       feed: priceFeed.health(),
       online: hub.onlineCount(),
+      // Reported unconditionally. An armed outcome rig must not be something
+      // you have to know to go looking for.
+      testRig: testRig.status(),
     });
   });
 
@@ -214,6 +218,9 @@ async function main(): Promise<void> {
     await publishDigitPrecision();
     // Records closing digits so Fpesa Auto measures real ticks.
     startDigitScan();
+    // Says loudly if outcomes are being decided by the server rather than the
+    // market. Prints nothing at all when it is off, which is the normal case.
+    testRig.announce();
   }
 
   server.listen(env.port, () => {

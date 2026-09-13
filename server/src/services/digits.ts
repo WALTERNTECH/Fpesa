@@ -37,6 +37,7 @@ import { db } from '../lib/db.js';
  */
 
 export type DigitPick = 'OVER' | 'UNDER';
+export type ParityPick = 'EVEN' | 'ODD';
 
 /** Over 9 and Under 0 can never win, so neither is offered. */
 export function isOfferedDigit(pick: DigitPick, digit: number): boolean {
@@ -83,6 +84,8 @@ export function quoteAllDigits(promoEdge?: number | null): {
   edge: number;
   over: DigitQuote[];
   under: DigitQuote[];
+  even: DigitQuote;
+  odd: DigitQuote;
 } {
   // Same edge as the digital: on both products it is subtracted from a payout
   // the trader can see before committing, so it is priced the same way.
@@ -93,7 +96,35 @@ export function quoteAllDigits(promoEdge?: number | null): {
     if (isOfferedDigit('OVER', d)) over.push(quoteDigit('OVER', d, edge));
     if (isOfferedDigit('UNDER', d)) under.push(quoteDigit('UNDER', d, edge));
   }
-  return { edge, over, under };
+  return { edge, over, under, even: quoteParity('EVEN', edge), odd: quoteParity('ODD', edge) };
+}
+
+/**
+ * Even/Odd.
+ *
+ * Five digits either side, so it is a coin flip before the edge and the payout
+ * is the same on both sides — there is no digit to pick and nothing to choose
+ * between except which half. Same identity as every other fixed-payout ticket:
+ *
+ *     payout = ((1 - 0.5) - edge) / 0.5  =  1 - 2 * edge
+ *
+ * At a 5% edge that is +90% of stake. Both sides pay it, because both sides
+ * carry the same odds; a platform quoting different payouts for Even and Odd
+ * would be claiming to know something about the next digit.
+ */
+export function quoteParity(pick: ParityPick, edge: number): DigitQuote {
+  const winChance = 0.5;
+  const payoutRate = ((1 - winChance) - edge) / winChance;
+  return {
+    pick: pick as unknown as DigitPick,
+    digit: -1,
+    winChance,
+    winChancePct: 50,
+    payoutRate,
+    payoutPctOfStake: Number((payoutRate * 100).toFixed(1)),
+    edge,
+    expectedPctOfStake: Number((-edge * 100).toFixed(2)),
+  };
 }
 
 /** Whether Over/Under is open for business, so it can be dark-launched. */

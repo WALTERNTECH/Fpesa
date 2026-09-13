@@ -25,7 +25,12 @@ export type TradeStatus = 'OPEN' | 'WON' | 'LOST' | 'TIE' | 'VOID';
  * against a barrier fixed at open: the win rate is wherever the barrier is put,
  * and the payout is fixed. Same house edge either way — only the shape differs.
  */
-export type TradeType = 'SCALED' | 'DIGITAL' | 'DIGITS_OVER' | 'DIGITS_UNDER';
+export type TradeType =
+  | 'SCALED' | 'DIGITAL'
+  | 'DIGITS_OVER' | 'DIGITS_UNDER' | 'DIGITS_EVEN' | 'DIGITS_ODD';
+
+/** Which digit market the ticket is on. */
+export type DigitMarket = 'EVEN_ODD' | 'OVER_UNDER';
 
 /** One win rate on offer, priced for both sides. */
 export type DigitalWinRate = {
@@ -42,7 +47,7 @@ export type DigitalWinRate = {
 
 /** One Over/Under ticket: the chance of winning and what it pays. */
 export type DigitTicket = {
-  pick: 'OVER' | 'UNDER';
+  pick: 'OVER' | 'UNDER' | 'EVEN' | 'ODD';
   digit: number;
   winChance: number;
   winChancePct: number;
@@ -56,6 +61,31 @@ export type DigitsQuote = {
   edge: number;
   over: DigitTicket[];
   under: DigitTicket[];
+  /** Both halves carry the same odds, so both carry the same payout. */
+  even: DigitTicket;
+  odd: DigitTicket;
+};
+
+/** One market as Fpesa Auto measured it. Counted, never predicted. */
+export type MarketScan = {
+  symbol: string;
+  name: string;
+  samples: number;
+  evenCount: number;
+  oddCount: number;
+  evenPct: number;
+  leaning: 'EVEN' | 'ODD';
+  z: number;
+  /** How often chance alone produces a lean this big. High means noise. */
+  chanceAlonePct: number;
+  unusual: boolean;
+};
+
+export type ScanReport = {
+  ts: number;
+  markets: MarketScan[];
+  best: MarketScan | null;
+  note: string;
 };
 
 export type DigitalQuote = {

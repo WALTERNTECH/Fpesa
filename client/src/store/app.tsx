@@ -27,6 +27,8 @@ import type {
   DigitalWinRate,
   DigitsQuote,
   DigitTicket,
+  DigitMarket,
+  ScanReport,
 } from '../lib/types';
 
 export type Toast = {
@@ -37,7 +39,7 @@ export type Toast = {
   detail?: string;
 };
 
-type ModalKind = 'login' | 'register' | 'deposit' | 'withdraw' | 'pass' | null;
+type ModalKind = 'login' | 'register' | 'deposit' | 'withdraw' | 'pass' | 'auto' | null;
 
 type AppValue = {
   ready: boolean;
@@ -103,6 +105,13 @@ type AppValue = {
    * so it is kept here rather than derived in one component.
    */
   digitHistory: number[];
+  /** Which digit market the ticket is on. */
+  digitMarket: DigitMarket;
+  setDigitMarket: (m: DigitMarket) => void;
+  /** Fpesa Auto's last measurement, and whether one is running. */
+  scan: ScanReport | null;
+  scanBusy: boolean;
+  runScan: () => Promise<void>;
   tradeBusy: Direction | null;
   tradeError: string | null;
   setTradeError: (message: string | null) => void;
@@ -120,7 +129,10 @@ type AppValue = {
   autoScan: ScanResult | null;
   autoStage: 'scanning' | 'chosen' | 'placing';
   startAuto: () => Promise<void>;
-  submitTrade: (direction: Direction, pick?: 'OVER' | 'UNDER') => Promise<void>;
+  submitTrade: (
+    direction: Direction,
+    pick?: 'OVER' | 'UNDER' | 'EVEN' | 'ODD'
+  ) => Promise<void>;
 
   modal: ModalKind;
   openModal: (kind: ModalKind) => void;
@@ -211,6 +223,9 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
   const [digit, setDigit] = useState<number>(5);
   const [digitsQuote, setDigitsQuote] = useState<DigitsQuote | null>(null);
   const [digitHistory, setDigitHistory] = useState<number[]>([]);
+  const [digitMarket, setDigitMarket] = useState<DigitMarket>('EVEN_ODD');
+  const [scan, setScan] = useState<ScanReport | null>(null);
+  const [scanBusy, setScanBusy] = useState(false);
   const [tradeBusy, setTradeBusy] = useState<Direction | null>(null);
   const [tradeError, setTradeError] = useState<string | null>(null);
   const [desk, setDesk] = useState<DeskState>(DEFAULT_CONFIG.desk);
@@ -679,9 +694,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
     };
   }, [digitalOn, symbol, duration, user?.promoEdge]);
 
-  const digitsOn =
-    config.digitsEnabled &&
-    (tradeType === 'DIGITS_OVER' || tradeType === 'DIGITS_UNDER');
+  const digitsOn = config.digitsEnabled;
   useEffect(() => {
     if (!digitsOn) {
       setDigitsQuote(null);
@@ -694,6 +707,19 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       .catch(() => undefined);
     return () => { live = false; };
   }, [digitsOn, user?.promoEdge]);
+
+  /* Fpesa Auto. Deliberately a measurement rather than a prediction — see the
+     server's digit-scan service for why there is nothing here to predict. */
+  const runScan = useCallback(async () => {
+    setScanBusy(true);
+    try {
+      setScan(await api.get<ScanReport>('/trades/digits/scan'));
+    } catch {
+      // Leave the previous reading up rather than blanking it on one bad fetch.
+    } finally {
+      setScanBusy(false);
+    }
+  }, []);
 
   const digitTerms = (() => {
     if (!digitsQuote) return null;
@@ -709,7 +735,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       : null;
 
   const submitTrade = useCallback(
-    async (direction: Direction, pick?: 'OVER' | 'UNDER') => {
+    async (direction: Direction, pick?: 'OVER' | 'UNDER' | 'EVEN' | 'ODD') => {
       if (!user) {
         setModal('login');
         return;
@@ -895,6 +921,11 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       digitsQuote,
       digitTerms,
       digitHistory,
+      digitMarket,
+      setDigitMarket,
+      scan,
+      scanBusy,
+      runScan,
       tradeBusy,
       tradeError,
       setTradeError,
@@ -925,7 +956,7 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       instruments, symbol, setSymbol, instrument, multiplier,
       balance, rate, toUsd, toKes,
       openTrades, stake, duration, tradeBusy, tradeError, stakeIssue,
-      tradeType, winRate, digitalQuote, digitalTerms, digit, digitsQuote, digitTerms, digitHistory,
+      tradeType, winRate, digitalQuote, digitalTerms, digit, digitsQuote, digitTerms, digitHistory, digitMarket, scan, scanBusy, runScan,
       canTrade, stakeCeiling, submitTrade, desk, autoRunCount, run, autoBusy,
       autoScan, autoStage, startAuto, modal, openModal, closeModal, login, register,
       logout, refreshUser, resetDemo, toasts, pushToast,

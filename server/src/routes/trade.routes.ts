@@ -12,6 +12,7 @@ import { priceFeed, SYMBOL } from '../services/prices.js';
 import { getInstrument } from '../services/instruments.js';
 import { quoteDigital, digitalsEnabled, DIGITAL_WIN_RATES, digitalEdgeFor } from '../services/digital.js';
 import { quoteAllDigits, digitsEnabled, isOfferedDigit, type DigitPick } from '../services/digits.js';
+import { scanMarkets } from '../services/digit-scan.js';
 import {
   ALLOWED_DURATIONS,
   TradeError,
@@ -238,6 +239,21 @@ tradeRouter.get('/digits/quote', requireAuth, (req, res) => {
   res.json(quoteAllDigits(req.user!.promoEdge));
 });
 
+/**
+ * Fpesa Auto: which market has leaned furthest from an even split, measured.
+ *
+ * Reports a lean and how likely pure chance is to have produced it. It does not
+ * predict the next digit — see services/digit-scan.ts for why there is nothing
+ * there to predict.
+ */
+tradeRouter.get('/digits/scan', requireAuth, (_req, res) => {
+  if (!digitsEnabled()) {
+    res.status(503).json({ error: 'DIGITS_OFF', message: 'That product is not available yet.' });
+    return;
+  }
+  res.json(scanMarkets());
+});
+
 // A human cannot meaningfully place more than a couple of trades a second;
 // this stops a scripted client from hammering the settlement engine.
 const placeLimiter = rateLimit({
@@ -259,7 +275,9 @@ const placeSchema = z.object({
   // Omitted by older clients, which trade the default market. On a run this
   // also accepts 'AUTO', which lets the scan choose the instrument.
   symbol: z.string().min(1).max(16).optional(),
-  tradeType: z.enum(['SCALED', 'DIGITAL', 'DIGITS_OVER', 'DIGITS_UNDER']).default('SCALED'),
+  tradeType: z
+    .enum(['SCALED', 'DIGITAL', 'DIGITS_OVER', 'DIGITS_UNDER', 'DIGITS_EVEN', 'DIGITS_ODD'])
+    .default('SCALED'),
   winRate: z.coerce.number().optional(),
   /** The digit an Over/Under ticket is settled against. */
   digit: z.coerce.number().int().min(0).max(9).optional(),

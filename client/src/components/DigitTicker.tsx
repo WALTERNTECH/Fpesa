@@ -1,86 +1,86 @@
 import { useMemo } from 'react';
 import { useApp } from '../store/app';
 
-/** How many recent digits to show as a running strip. */
-const STRIP = 18;
+const R = 17;
+const C = 2 * Math.PI * R;
 
 /**
- * The last-digit ticker.
+ * The digit ring.
  *
- * On an Over/Under ticket the price level is incidental — what decides the
- * trade is the final digit — so this is the instrument the trader is really
- * watching, and it sits directly under the chart where the price would be read.
+ * On a digit market the price level is incidental — what settles the trade is
+ * the final digit — so this is the instrument the trader is actually reading,
+ * and it sits directly under the chart where the price would be.
  *
- * Two readings, because they answer different questions. The strip is what just
- * happened, newest on the right. The bars are how the digits have landed over
- * the window so far, which is the only way to see that they land evenly.
+ * Each digit is a ring whose arc is that digit's share of the window, so an
+ * even spread reads as ten matching rings at a glance. The digit the market
+ * just touched lights up and carries the pointer. Most and least frequent are
+ * tinted, because those are the two a trader looks for.
  *
- * It says how many ticks it has counted rather than implying a fixed sample.
- * The window fills as the session runs, and a distribution over forty ticks is
- * not the same claim as one over a thousand.
+ * The count is stated rather than implied: a spread over forty ticks is not the
+ * claim two thousand would be, and rings drawn from forty ticks look far more
+ * meaningful than they are.
  */
 export function DigitTicker(): JSX.Element | null {
-  const { digitHistory, config, instrument } = useApp();
+  const { digitHistory, config } = useApp();
 
-  const { counts, max, total, recent } = useMemo(() => {
-    const c = new Array(10).fill(0) as number[];
-    for (const d of digitHistory) c[d] = (c[d] ?? 0) + 1;
+  const { pct, total, latest, hi, lo } = useMemo(() => {
+    const counts = new Array(10).fill(0) as number[];
+    for (const d of digitHistory) counts[d] = (counts[d] ?? 0) + 1;
+    const n = digitHistory.length;
+    const p = counts.map((c) => (n > 0 ? (c / n) * 100 : 0));
+    let hiD = -1;
+    let loD = -1;
+    if (n > 0) {
+      hiD = p.indexOf(Math.max(...p));
+      loD = p.indexOf(Math.min(...p));
+    }
     return {
-      counts: c,
-      max: Math.max(1, ...c),
-      total: digitHistory.length,
-      recent: digitHistory.slice(-STRIP),
+      pct: p,
+      total: n,
+      latest: n > 0 ? digitHistory[n - 1]! : -1,
+      hi: hiD,
+      lo: loD,
     };
   }, [digitHistory]);
 
   if (!config.digitsEnabled) return null;
 
-  const latest = recent.length > 0 ? recent[recent.length - 1] : null;
-
   return (
-    <div className="card digits-card">
-      <div className="card-head">
-        <div className="section-title">
-          <span className="dot" />
-          Last digit
-        </div>
-        <span className="eyebrow">
-          {total > 0
-            ? total.toLocaleString('en-KE') + ' ticks' +
-              (instrument ? ' · ' + instrument.precision + 'dp' : '')
-            : 'waiting for ticks'}
-        </span>
+    <div className="card ring-card">
+      <div className="ring-row" aria-label="Last digit distribution">
+        {pct.map((p, d) => {
+          // Scaled against a tenth, so an even market sits at a full ring.
+          const filled = Math.max(0, Math.min(1, p / 10));
+          const tone = d === hi ? ' hi' : d === lo ? ' lo' : '';
+          const now = d === latest ? ' now' : '';
+          return (
+            <div key={d} className={'ring' + tone + now}>
+              <svg viewBox="0 0 40 40" aria-hidden="true">
+                <circle className="r-track" cx="20" cy="20" r={R} fill="none" strokeWidth="3" />
+                <circle
+                  className="r-arc"
+                  cx="20"
+                  cy="20"
+                  r={R}
+                  fill="none"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeDasharray={C}
+                  strokeDashoffset={C * (1 - filled)}
+                  transform="rotate(-90 20 20)"
+                />
+              </svg>
+              <span className="r-d tnum">{d}</span>
+              <span className="r-p tnum">{total > 0 ? p.toFixed(1) : '—'}</span>
+              <span className="r-mark" aria-hidden="true" />
+            </div>
+          );
+        })}
       </div>
-
-      <div className="card-body digits-body">
-        {/* What just happened, newest on the right. */}
-        <div className="digit-strip" aria-label="Recent last digits">
-          {recent.length === 0 && <span className="digit-wait">Collecting ticks…</span>}
-          {recent.map((d, i) => (
-            <span
-              key={digitHistory.length - recent.length + i}
-              className={'ds' + (i === recent.length - 1 ? ' now' : '')}
-            >
-              {d}
-            </span>
-          ))}
-        </div>
-
-        {/* How they have landed. Even bars are the product working. */}
-        <div className="digit-bars" aria-label="Digit distribution">
-          {counts.map((n, d) => {
-            const pct = total > 0 ? (n / total) * 100 : 0;
-            return (
-              <div key={d} className={'db' + (latest === d ? ' now' : '')}>
-                <span className="db-pct tnum">{total > 0 ? pct.toFixed(1) : '—'}</span>
-                <div className="db-track">
-                  <i style={{ height: Math.round((n / max) * 100) + '%' }} />
-                </div>
-                <span className="db-d tnum">{d}</span>
-              </div>
-            );
-          })}
-        </div>
+      <div className="ring-foot">
+        {total > 0
+          ? total.toLocaleString('en-KE') + ' ticks measured'
+          : 'collecting ticks…'}
       </div>
     </div>
   );

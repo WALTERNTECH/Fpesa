@@ -4,67 +4,73 @@ import { usd, durationLabel } from '../lib/format';
 import { OpenPositions } from './OpenPositions';
 import { IconArrowDown, IconArrowUp } from './Icons';
 
+/** The preset stakes on the ticket, in dollars. */
+const PRESETS = [1, 5, 10, 25, 50, 100];
+
 export function TradePanel(): JSX.Element {
   const {
     user, config, accountMode, setAccountMode, balance, openModal,
     stake, setStake, duration, setDuration,
     tradeBusy, tradeError, setTradeError, stakeIssue, canTrade, submitTrade, desk,
-    run, startAuto, autoBusy, symbol, multiplier, stakeCeiling, toUsd, autoRunCount,
-    digit, setDigit, digitsQuote,
+    symbol, multiplier, stakeCeiling, toUsd,
+    digit, setDigit, digitsQuote, digitMarket, setDigitMarket,
   } = useApp();
 
-  // Over/Under is the product. Everything else is the older ticket, kept for
-  // as long as the scaled market is still offered.
   const isDigits = config.digitsEnabled;
+  const isEvenOdd = digitMarket === 'EVEN_ODD';
 
   const stakeAmount = Number(stake);
   const validStake = Number.isFinite(stakeAmount) ? stakeAmount : 0;
   const ceilingUsd = Math.floor(toUsd(stakeCeiling));
 
-  const maxProfit = validStake * config.maxProfitMultiple;
-  const wipeoutMovePct = useMemo(() => (1 / multiplier) * 100, [multiplier]);
-  const effectiveEdge = user?.promoEdge ?? config.houseEdge;
-  const onPromo = user?.promoEdge != null && user.promoEdge < config.houseEdge;
-  const spreadCost = validStake * effectiveEdge;
+  const presets = useMemo(
+    () => PRESETS.filter((v) => v >= config.minStakeUsd && v <= ceilingUsd),
+    [config.minStakeUsd, ceilingUsd]
+  );
 
-  const quickAmounts = useMemo(() => {
-    const options = [config.minStakeUsd, 5, 25, ceilingUsd];
-    return Array.from(
-      new Set(options.filter((v) => v >= config.minStakeUsd && v <= ceilingUsd))
-    ).sort((a, b) => a - b);
-  }, [config.minStakeUsd, ceilingUsd]);
-
-  /* Deriv's stake stepper. A round step rather than a percentage: a trader
-     nudging a $1 ticket wants $2, not $1.10. */
   const stepStake = (by: number): void => {
     const next = Math.min(Math.max(validStake + by, config.minStakeUsd), ceilingUsd);
     setStake(String(Math.round(next * 100) / 100));
     setTradeError(null);
   };
 
-  // Both sides of the picked digit, priced. Over 9 and Under 0 never win and
-  // are not quoted, so the matching button simply has nothing to offer.
-  const overTicket = digitsQuote?.over.find((t) => t.digit === digit) ?? null;
-  const underTicket = digitsQuote?.under.find((t) => t.digit === digit) ?? null;
+  // Both sides of whichever market is up, priced by the server.
+  const left = isEvenOdd
+    ? digitsQuote?.even ?? null
+    : digitsQuote?.over.find((t) => t.digit === digit) ?? null;
+  const right = isEvenOdd
+    ? digitsQuote?.odd ?? null
+    : digitsQuote?.under.find((t) => t.digit === digit) ?? null;
 
   const deskClosed = accountMode === 'real' && !desk.open;
   const inlineError = tradeError ?? stakeIssue;
   const blocked = tradeBusy !== null || deskClosed || (Boolean(user) && !canTrade);
 
+  const place = (pick: 'EVEN' | 'ODD' | 'OVER' | 'UNDER'): void => {
+    void submitTrade('BUY', pick);
+  };
+
   return (
     <div className="trade-panel">
       <div className="card">
-        <div className="card-head">
-          <div className="section-title">
-            <span className="dot" />
-            Trade {symbol}
-          </div>
-          {!isDigits && (
-            <span className="eyebrow">×{multiplier.toLocaleString('en-KE')}</span>
-          )}
-        </div>
-
         <div className="card-body">
+          {isDigits && (
+            <div className="mkt-tabs" role="group" aria-label="Market">
+              <button
+                aria-pressed={isEvenOdd}
+                onClick={() => setDigitMarket('EVEN_ODD')}
+              >
+                Even / Odd
+              </button>
+              <button
+                aria-pressed={!isEvenOdd}
+                onClick={() => setDigitMarket('OVER_UNDER')}
+              >
+                Over / Under
+              </button>
+            </div>
+          )}
+
           <div className="acct-switch" role="group" aria-label="Account type">
             <button onClick={() => setAccountMode('demo')} aria-pressed={accountMode === 'demo'}>
               Demo
@@ -93,7 +99,7 @@ export function TradePanel(): JSX.Element {
               <span>Duration</span>
               <span className="hint">Settles automatically</span>
             </div>
-            <div className="dur-grid" role="group" aria-label="Trade duration">
+            <div className="dur-grid" role="group" aria-label="Duration">
               {config.durations.map((seconds) => (
                 <button
                   key={seconds}
@@ -115,8 +121,6 @@ export function TradePanel(): JSX.Element {
                 {usd(config.minStakeUsd)} – {usd(ceilingUsd)}
               </span>
             </div>
-            {/* Stepper either side of the amount, so the common adjustment is a
-                tap rather than a keyboard on a phone. */}
             <div className={'stake-row' + (stakeIssue ? ' invalid' : '')}>
               <button
                 type="button"
@@ -151,184 +155,104 @@ export function TradePanel(): JSX.Element {
                 +
               </button>
             </div>
-            <div className="chip-row">
-              {quickAmounts.map((value) => (
+            <div className="preset-row">
+              {presets.map((v) => (
                 <button
-                  key={value}
+                  key={v}
                   type="button"
-                  className="chip"
+                  className="preset"
+                  aria-pressed={validStake === v}
                   onClick={() => {
-                    setStake(String(value));
+                    setStake(String(v));
                     setTradeError(null);
                   }}
                 >
-                  {value >= 1000 ? '$' + (value / 1000).toFixed(0) + 'K' : '$' + value}
+                  ${v}
                 </button>
               ))}
             </div>
           </div>
 
+          {/* Over/Under needs a digit; Even/Odd does not — both halves carry the
+              same odds, so there is nothing to pick. */}
+          {isDigits && !isEvenOdd && (
+            <div className="field">
+              <div className="field-label">
+                <span>Last digit</span>
+                <span className="hint">Rarer digit pays more</span>
+              </div>
+              <div className="digit-grid" role="group" aria-label="Digit">
+                {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className="digit"
+                    aria-pressed={digit === d}
+                    onClick={() => setDigit(d)}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {isDigits ? (
-            <>
-              <div className="field">
-                <div className="field-label">
-                  <span>Last digit</span>
-                  <span className="hint">Rarer digit pays more</span>
-                </div>
-                <div className="digit-grid" role="group" aria-label="Digit">
-                  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => (
-                    <button
-                      key={d}
-                      type="button"
-                      className="digit"
-                      aria-pressed={digit === d}
-                      onClick={() => setDigit(d)}
-                    >
-                      {d}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Two buttons, not a toggle and a trade button. The side IS the
-                  trade, and each carries the payout it would pay, because that
-                  is the number the choice turns on. Over 9 and Under 0 can
-                  never win, so at those digits one side has nothing to sell. */}
-              <div className="ou-actions">
-                <button
-                  className="ou buy"
-                  disabled={blocked || !overTicket}
-                  onClick={() => void submitTrade('BUY', 'OVER')}
-                >
-                  <span className="ou-main">
-                    <IconArrowUp size={16} />
-                    Over {digit}
-                  </span>
-                  <span className="ou-pay tnum">
-                    {tradeBusy
-                      ? 'Placing…'
-                      : overTicket
-                      ? '+' + usd(validStake * overTicket.payoutRate)
-                      : 'not offered'}
-                  </span>
-                  <small>
-                    {overTicket ? overTicket.winChancePct + '% of ticks' : 'nothing is over 9'}
-                  </small>
-                </button>
-
-                <button
-                  className="ou sell"
-                  disabled={blocked || !underTicket}
-                  onClick={() => void submitTrade('BUY', 'UNDER')}
-                >
-                  <span className="ou-main">
-                    <IconArrowDown size={16} />
-                    Under {digit}
-                  </span>
-                  <span className="ou-pay tnum">
-                    {tradeBusy
-                      ? 'Placing…'
-                      : underTicket
-                      ? '+' + usd(validStake * underTicket.payoutRate)
-                      : 'not offered'}
-                  </span>
-                  <small>
-                    {underTicket ? underTicket.winChancePct + '% of ticks' : 'nothing is under 0'}
-                  </small>
-                </button>
-              </div>
-
-              {/* The appealing half is "wins 9 times in 10", so the half that
-                  corrects it sits on the same card. Do not drop the last
-                  sentence. */}
-              <p className="digital-note">
-                A loss costs the whole {usd(validStake)}. Landing exactly on {digit} loses
-                either way, which is why the two sides add to 90% rather than 100%.
-                Each trade costs{' '}
-                {Math.abs(
-                  (overTicket ?? underTicket)?.expectedPctOfStake ?? 0
-                ).toFixed(0)}
-                % of stake on average.
-              </p>
-            </>
-          ) : (
-            <>
-              <div className="terms">
-                <div className="term">
-                  <span className="k">Position size</span>
-                  <span className="v tnum">×{multiplier.toLocaleString('en-KE')}</span>
-                </div>
-                <div className="term">
-                  <span className="k">Max profit</span>
-                  <span className="v tnum up">{usd(maxProfit)}</span>
-                </div>
-                <div className="term">
-                  <span className="k">Closes itself if price moves</span>
-                  <span className="v tnum down">{wipeoutMovePct.toFixed(3)}% against you</span>
-                </div>
-                <div className="term">
-                  <span className="k">Spread (cost to open)</span>
-                  <span className="v tnum">
-                    {onPromo && <s className="was">{(config.houseEdge * 100).toFixed(1)}%</s>}
-                    {usd(spreadCost)} · {(effectiveEdge * 100).toFixed(1)}%
-                  </span>
-                </div>
-              </div>
-
+            <div className="ou-actions">
               <button
-                className="autotrade"
-                disabled={autoBusy || blocked}
-                onClick={() => void startAuto()}
+                className="ou buy"
+                disabled={blocked || !left}
+                onClick={() => place(isEvenOdd ? 'EVEN' : 'OVER')}
               >
-                <span className="at-main">AI Scanner</span>
-                <span className="at-sub">
-                  Scans all {config.instruments.length} markets, then opens {autoRunCount} positions
+                <span className="ou-main">{isEvenOdd ? 'Even' : 'Over ' + digit}</span>
+                <span className="ou-pay tnum">
+                  {tradeBusy
+                    ? 'Placing…'
+                    : left
+                    ? usd(validStake * left.payoutRate)
+                    : 'not offered'}
                 </span>
+                <small>{left ? left.payoutPctOfStake.toFixed(1) + '% payout' : '—'}</small>
               </button>
-
-              <div className="trade-actions">
-                <button
-                  className="trade-btn buy"
-                  disabled={blocked}
-                  onClick={() => void submitTrade('BUY')}
-                >
-                  <IconArrowUp size={17} />
-                  {tradeBusy === 'BUY' ? 'Placing…' : 'Buy'}
-                  <small>Price goes up</small>
-                </button>
-                <button
-                  className="trade-btn sell"
-                  disabled={blocked}
-                  onClick={() => void submitTrade('SELL')}
-                >
-                  <IconArrowDown size={17} />
-                  {tradeBusy === 'SELL' ? 'Placing…' : 'Sell'}
-                  <small>Price goes down</small>
-                </button>
-              </div>
-            </>
-          )}
-
-          {onPromo && user?.promoUntil && (
-            <div className="promo-live">
-              <b>{user.promoCode}</b> active — you pay {(effectiveEdge * 100).toFixed(1)}% instead
-              of {(config.houseEdge * 100).toFixed(1)}% until{' '}
-              {new Date(user.promoUntil).toLocaleString('en-KE', {
-                hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short',
-              })}
+              <button
+                className="ou sell"
+                disabled={blocked || !right}
+                onClick={() => place(isEvenOdd ? 'ODD' : 'UNDER')}
+              >
+                <span className="ou-main">{isEvenOdd ? 'Odd' : 'Under ' + digit}</span>
+                <span className="ou-pay tnum">
+                  {tradeBusy
+                    ? 'Placing…'
+                    : right
+                    ? usd(validStake * right.payoutRate)
+                    : 'not offered'}
+                </span>
+                <small>{right ? right.payoutPctOfStake.toFixed(1) + '% payout' : '—'}</small>
+              </button>
+            </div>
+          ) : (
+            <div className="trade-actions">
+              <button className="trade-btn buy" disabled={blocked} onClick={() => void submitTrade('BUY')}>
+                <IconArrowUp size={17} />
+                {tradeBusy === 'BUY' ? 'Placing…' : 'Buy'}
+                <small>Price goes up</small>
+              </button>
+              <button className="trade-btn sell" disabled={blocked} onClick={() => void submitTrade('SELL')}>
+                <IconArrowDown size={17} />
+                {tradeBusy === 'SELL' ? 'Placing…' : 'Sell'}
+                <small>Price goes down</small>
+              </button>
             </div>
           )}
 
-          {run && run.status === 'RUNNING' && (
-            <div className="at-live">
-              <span>
-                Position {Math.min(run.completedCount + 1, run.totalCount)} of {run.totalCount}
-              </span>
-              <b className={'tnum ' + (run.netProfit >= 0 ? 'up' : 'down')}>
-                {run.netProfit >= 0 ? '+' : '−'}
-                {usd(toUsd(Math.abs(run.netProfit)))}
-              </b>
-            </div>
+          {/* One line. A loss is the whole stake, and winning half the time at
+              a payout under 100% is still a losing expectation — which is the
+              part a trader has to be told rather than left to work out. */}
+          {isDigits && (left ?? right) && (
+            <p className="digital-note">
+              A loss costs the whole {usd(validStake)}. Each trade costs{' '}
+              {Math.abs((left ?? right)!.expectedPctOfStake).toFixed(0)}% of stake on average.
+            </p>
           )}
 
           {deskClosed && (
@@ -352,6 +276,12 @@ export function TradePanel(): JSX.Element {
             >
               Deposit
             </button>
+          )}
+
+          {!isDigits && (
+            <div className="eyebrow" style={{ marginTop: 10 }}>
+              {symbol} · ×{multiplier.toLocaleString('en-KE')}
+            </div>
           )}
         </div>
       </div>

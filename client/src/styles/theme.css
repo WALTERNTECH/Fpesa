@@ -2090,6 +2090,252 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .digit:disabled { opacity: 0.3; }
 .digit-place { margin-top: 12px; }
 
+/* ===================================================== digit markets ===== */
+
+/* Market tabs. Quiet until chosen, because the choice is made once. */
+.mkt-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 3px;
+  background: var(--surface-sunk);
+  border-radius: 11px;
+  margin-bottom: 14px;
+}
+.mkt-tabs button {
+  padding: 11px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--muted);
+  transition: all 0.15s var(--ease);
+}
+.mkt-tabs button[aria-pressed='true'] {
+  background: var(--white);
+  color: var(--blue);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ------------------------------------------------------------ digit rings */
+.ring-card { padding: 14px 12px 12px; min-width: 0; }
+.ring-row {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 2px;
+}
+.ring {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+.ring svg { width: 100%; max-width: 44px; height: auto; display: block; }
+.r-track { stroke: var(--surface-sunk); }
+.r-arc { stroke: #c3cddb; transition: stroke-dashoffset 0.35s var(--ease), stroke 0.2s var(--ease); }
+.ring.hi .r-arc { stroke: var(--up); }
+.ring.lo .r-arc { stroke: var(--down); }
+.ring.now .r-arc { stroke: var(--blue); }
+
+/* The digit sits inside its own ring. */
+.r-d {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: grid;
+  place-items: center;
+  height: 44px;
+  max-height: 100%;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  pointer-events: none;
+}
+.ring.now .r-d { color: var(--blue); }
+.r-p { margin-top: 2px; font-size: 9px; color: var(--subtle); }
+.ring.hi .r-p { color: var(--up); font-weight: 650; }
+.ring.lo .r-p { color: var(--down); font-weight: 650; }
+.ring.now .r-p { color: var(--blue); font-weight: 700; }
+
+/* Pointer under the digit the market just touched. */
+.r-mark { height: 6px; margin-top: 3px; }
+.ring.now .r-mark {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 6px solid var(--blue);
+}
+.ring-foot {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--subtle);
+}
+
+.chart-col { display: flex; flex-direction: column; gap: var(--gutter); min-width: 0; }
+
+/* ------------------------------------------------------------ stake input */
+.stake-row { display: grid; grid-template-columns: 48px 1fr 48px; gap: 6px; }
+.stake-step {
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1;
+}
+.stake-step:disabled { opacity: 0.32; }
+.stake-input {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+  border: 1.5px solid transparent;
+}
+.stake-row.invalid .stake-input { border-color: var(--down); }
+.stake-input .cur { font-size: 15px; font-weight: 650; color: var(--muted); }
+.stake-input input {
+  width: 100%;
+  min-width: 0;
+  padding: 14px 0;
+  background: none;
+  border: 0;
+  text-align: center;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.stake-input input:focus { outline: none; }
+
+.preset-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-top: 8px; }
+.preset {
+  padding: 9px 0;
+  border-radius: 8px;
+  background: var(--surface-sunk);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.preset[aria-pressed='true'] { background: var(--blue); color: #fff; }
+
+/* -------------------------------------------------------- the two buttons */
+.ou-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+.ou {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 15px 8px;
+  border-radius: var(--r);
+  color: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: filter 0.12s var(--ease), transform 0.06s var(--ease);
+}
+.ou:active { transform: translateY(1px); }
+.ou:disabled { opacity: 0.4; box-shadow: none; }
+.ou.buy { background: var(--up); }
+.ou.sell { background: var(--down); }
+.ou-main { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+.ou-pay { font-size: 15px; font-weight: 650; }
+.ou small { font-size: 10px; opacity: 0.82; }
+
+/* ------------------------------------------------------------- Fpesa Auto */
+.auto-best {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: var(--r);
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+}
+.ab-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ab-k { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--subtle); }
+.ab-tag {
+  font-size: 10px;
+  font-weight: 650;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--white);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+.ab-tag.hot { background: var(--up-soft); color: #04684a; border-color: rgba(0, 168, 112, 0.3); }
+.ab-market { margin-top: 6px; font-size: 16px; font-weight: 700; color: var(--ink); }
+.ab-split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.ab-side {
+  padding: 9px;
+  border-radius: var(--r-sm);
+  background: var(--white);
+  border: 1px solid var(--line);
+  text-align: center;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.ab-side.on { border-color: var(--blue); color: var(--blue); }
+.ab-meta { margin-top: 8px; font-size: 11px; color: var(--subtle); line-height: 1.5; }
+.ab-meta b { color: var(--ink); }
+
+.auto-table { width: 100%; margin-top: 12px; border-collapse: collapse; font-size: 12px; }
+.auto-table td { padding: 8px 4px; border-bottom: 1px solid var(--line); color: var(--muted); }
+.auto-table td:first-child { font-weight: 650; color: var(--ink); }
+.auto-table td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.auto-table tr.on td { color: var(--blue); }
+
+/* --------------------------------------------------------- bottom nav ---- */
+.bnav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px calc(8px + var(--safe-b));
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--line);
+}
+.bnav button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 4px;
+  border-radius: 12px;
+  font-size: 10.5px;
+  font-weight: 650;
+  color: var(--muted);
+}
+.bnav .bn-i { color: var(--muted); display: grid; place-items: center; }
+.bnav button:first-child { color: var(--blue); }
+.bnav button:first-child .bn-i { color: var(--blue); }
+
+/* The scanner is the one thing on this bar worth drawing the eye. */
+.bn-auto { color: var(--ink) !important; }
+.bn-spark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--blue) 0%, #6b46f5 100%);
+  box-shadow: 0 4px 12px rgba(11, 79, 216, 0.3);
+}
+
+/* The nav sits over the page, so the page has to end above it. */
+.footer { padding-bottom: calc(96px + var(--safe-b)); }
+
+
 /* The chart and the digit strip read as one column, since the strip is what
    the ticket actually resolves against. */
 .chart-col { display: flex; flex-direction: column; gap: var(--gutter); min-width: 0; }

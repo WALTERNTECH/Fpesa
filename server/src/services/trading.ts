@@ -6,7 +6,7 @@ import { exposureGuard } from './exposure.js';
 import { executionStats } from './execution-stats.js';
 import { settings } from './settings.js';
 import { quoteDigital, digitalsEnabled, isOfferedWinRate, digitalEdgeFor } from './digital.js';
-import { quoteDigit, digitsEnabled, isOfferedDigit, type DigitPick } from './digits.js';
+import { quoteDigit, quoteParity, digitsEnabled, isOfferedDigit, type DigitPick } from './digits.js';
 import { solvency } from './solvency.js';
 import { hub } from '../realtime/hub.js';
 
@@ -32,7 +32,9 @@ export type TradeRow = {
   take_profit_price: string | number | null;
   max_profit: string | number | null;
   close_reason: 'EXPIRY' | 'STOP_OUT' | 'TAKE_PROFIT' | null;
-  trade_type: 'SCALED' | 'DIGITAL' | 'DIGITS_OVER' | 'DIGITS_UNDER';
+  trade_type:
+    | 'SCALED' | 'DIGITAL'
+    | 'DIGITS_OVER' | 'DIGITS_UNDER' | 'DIGITS_EVEN' | 'DIGITS_ODD';
   barrier_price: string | number | null;
   run_id?: string | null;
 };
@@ -436,7 +438,9 @@ class TradingEngine {
      */
     edge?: number;
     /** Which product: the scaled original, a digital, or Over/Under on a digit. */
-    tradeType?: 'SCALED' | 'DIGITAL' | 'DIGITS_OVER' | 'DIGITS_UNDER';
+    tradeType?:
+      | 'SCALED' | 'DIGITAL'
+      | 'DIGITS_OVER' | 'DIGITS_UNDER' | 'DIGITS_EVEN' | 'DIGITS_ODD';
     /** The digit an Over/Under ticket settles against. */
     digit?: number;
     /** Digitals only: the share of positions that win, which sets the payout. */
@@ -508,14 +512,23 @@ class TradingEngine {
       params.tradeType === 'DIGITS_OVER' ? 'OVER'
       : params.tradeType === 'DIGITS_UNDER' ? 'UNDER'
       : null;
+    // Even/Odd has no digit to pick: both halves carry the same odds.
+    const parityPick: 'EVEN' | 'ODD' | null =
+      params.tradeType === 'DIGITS_EVEN' ? 'EVEN'
+      : params.tradeType === 'DIGITS_ODD' ? 'ODD'
+      : null;
     const scaledEdge =
       typeof params.edge === 'number' && params.edge >= 0 && params.edge <= 0.2
         ? params.edge
         : settings.houseEdge();
     // A digital is priced off its own, lower edge — see digitalEdgeFor. The
     // trader's pass still applies to it when the pass is the better rate.
-    const edge = isDigital || digitPick ? digitalEdgeFor(params.edge ?? null) : scaledEdge;
+    const edge =
+      isDigital || digitPick || parityPick ? digitalEdgeFor(params.edge ?? null) : scaledEdge;
 
+    if (parityPick && !digitsEnabled()) {
+      throw new TradeError('DIGITS_OFF', 'That product is not available yet.', 503);
+    }
     if (digitPick) {
       if (!digitsEnabled()) {
         throw new TradeError('DIGITS_OFF', 'That product is not available yet.', 503);
@@ -550,7 +563,11 @@ class TradingEngine {
 
     // Over/Under is decided by the closing digit, so it has no barrier to
     // place and nothing to price off volatility — the odds are arithmetic.
-    const digitQuote = digitPick ? quoteDigit(digitPick, params.digit!, edge) : null;
+    const digitQuote = digitPick
+      ? quoteDigit(digitPick, params.digit!, edge)
+      : parityPick
+      ? quoteParity(parityPick, edge)
+      : null;
 
     // Both fixed-payout products carry their edge in the payout, so they open
     // at the mid. Marking the entry as well would charge it twice.
@@ -594,10 +611,17 @@ class TradingEngine {
       // trades arriving together cannot both pass a limit only one fits in.
       p_operator_float: env.operatorFloat,
       p_position_share: env.maxPositionShare,
-      p_trade_type: digitPick ? ('DIGITS_' + digitPick) : isDigital ? 'DIGITAL' : 'SCALED',
+      p_trade_type: digitPick
+        ? 'DIGITS_' + digitPick
+        : parityPick
+        ? 'DIGITS_' + parityPick
+        : isDigital
+        ? 'DIGITAL'
+        : 'SCALED',
       // On Over/Under the barrier column carries the picked digit rather than
       // a price — the thing the position is settled against either way.
-      p_barrier: quote ? quote.barrier : digitQuote ? digitQuote.digit : null,
+      // Even/Odd has no barrier at all; Over/Under stores the picked digit here.
+      p_barrier: quote ? quote.barrier : digitPick ? digitQuote!.digit : null,
     });
 
     if (error) {

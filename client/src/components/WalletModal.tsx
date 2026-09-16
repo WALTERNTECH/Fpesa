@@ -257,7 +257,7 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
           </div>
 
           <div className="chip-row" style={{ marginBottom: 18 }}>
-            {(inUsd ? [10, 25, 50, 100] : QUICK).filter((v) => v >= minimum)
+            {(inUsd ? [1, 5, 10, 25, 50, 100] : QUICK).filter((v) => v >= minimum)
               .slice(0, 4)
               .map((v) => (
                 <button

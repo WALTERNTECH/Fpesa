@@ -181,7 +181,19 @@ export const env = {
   minStakeUsd: num('TRADE_MIN_STAKE_USD', 1),
   maxStake: num('TRADE_MAX_STAKE', 1000000),
   demoStartingBalance: num('DEMO_STARTING_BALANCE', 10000),
-  minDeposit: num('MIN_DEPOSIT', 1000),
+  /**
+   * The shilling floor the server enforces on every deposit, whatever currency
+   * the customer was quoted in.
+   *
+   * Deposits are quoted in dollars, so MIN_DEPOSIT_USD is the real product
+   * minimum and this is only a dust guard. It must never be the binding
+   * constraint, or the dollar minimum becomes a fiction: the route accepts the
+   * dollar amount, converts it at the live rate, and then this refuses it —
+   * leaving a screen that advertises $1 and a server that says no in
+   * shillings. At 50 that needs the shilling to strengthen past 50 to the
+   * dollar, which is not a rate this market has.
+   */
+  minDeposit: num('MIN_DEPOSIT', 50),
   /**
    * Deposits are quoted to the customer in dollars, because that is the unit
    * they think in for a trading account. Everything else — balances, stakes,
@@ -189,7 +201,8 @@ export const env = {
    * actually charges is worked out server-side at the moment of the request.
    */
   depositCurrency: str('DEPOSIT_CURRENCY', 'USD') as 'USD' | 'KES',
-  minDepositUsd: num('MIN_DEPOSIT_USD', 10),
+  /** The real product minimum, and the figure the deposit screen shows. */
+  minDepositUsd: num('MIN_DEPOSIT_USD', 1),
   /**
    * Used only when the rate feed is unreachable. Kept deliberately conservative
    * for the customer: too low a rate charges them fewer shillings per dollar,

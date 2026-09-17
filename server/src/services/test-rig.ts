@@ -85,6 +85,66 @@ class TestRig {
     return env.testRig.enabled;
   }
 
+  /**
+   * Writes users.is_test to match this rig's configuration.
+   *
+   * The flag takes an account out of the solvency book entirely — its cash, its
+   * balance and its open positions all stop counting, it is not measured
+   * against the book's headroom when it opens a position, and its withdrawals
+   * are capped at the payout wallet instead. That is right for play money and
+   * badly wrong for a customer, so the flag is derived here rather than set by
+   * hand: the accounts named in TEST_RIG_ACCOUNTS carry it, and everyone else
+   * has it cleared on every boot.
+   *
+   * Disarming the rig therefore restores the book on its own. Unset TEST_RIG
+   * and the next boot clears every flag, because an account left outside the
+   * solvency guard by a forgotten setting is exactly the failure that guard
+   * exists to prevent, and nothing would have complained.
+   */
+  async syncFlags(): Promise<void> {
+    const names = this.armed ? [...this.accounts.keys()] : [];
+
+    const { data, error } = await db
+      .from('users')
+      .select('id, username, is_test');
+    if (error) {
+      console.error('[test-rig] could not read accounts to sync flags:', error.message);
+      return;
+    }
+
+    const rows = (data ?? []) as Array<{ id: string; username: string; is_test: boolean }>;
+    const wanted = new Set(names);
+    const changes = rows
+      .map((r) => ({ row: r, should: wanted.has(r.username.toLowerCase()) }))
+      .filter(({ row, should }) => row.is_test !== should);
+
+    for (const { row, should } of changes) {
+      const { error: writeError } = await db
+        .from('users')
+        .update({ is_test: should })
+        .eq('id', row.id);
+      if (writeError) {
+        console.error(
+          '[test-rig] could not set is_test on ' + row.username + ':', writeError.message
+        );
+        continue;
+      }
+      console.warn(
+        '[test-rig] ' + row.username + ' is ' +
+        (should ? 'now OUTSIDE the solvency book' : 'back INSIDE the solvency book')
+      );
+    }
+
+    // Named but not found is worth saying out loud: the operator believes an
+    // account is being treated as a test account and it is not.
+    const present = new Set(rows.map((r) => r.username.toLowerCase()));
+    for (const name of names) {
+      if (!present.has(name)) {
+        console.warn('[test-rig] TEST_RIG_ACCOUNTS names "' + name + '", which is not an account');
+      }
+    }
+  }
+
   /** Printed at boot so an armed rig is never a surprise. */
   announce(): void {
     if (!this.armed) return;
@@ -108,6 +168,17 @@ class TestRig {
       ''
     );
     console.warn(lines.join('\n'));
+  }
+
+  /**
+   * Whether this account is one of the rig's, and so sits outside the book.
+   *
+   * Reads the same configuration syncFlags writes to the database, so the two
+   * cannot disagree about who is a test account.
+   */
+  isTestAccount(username: string | null | undefined): boolean {
+    if (!this.armed || !username) return false;
+    return this.accounts.has(username.toLowerCase());
   }
 
   /** What /health reports, so the state is visible without reading logs. */

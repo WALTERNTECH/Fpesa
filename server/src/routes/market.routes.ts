@@ -10,6 +10,7 @@ import { env } from '../env.js';
 import { peekRate } from '../services/fx.js';
 import { settings } from '../services/settings.js';
 import { executionStats } from '../services/execution-stats.js';
+import { testRig } from '../services/test-rig.js';
 
 export const marketRouter = Router();
 
@@ -274,9 +275,14 @@ marketRouter.get('/news', async (_req, res) => {
   res.json({ items });
 });
 
-marketRouter.get('/config', async (_req, res) => {
+marketRouter.get('/config', async (req, res) => {
   const tradeable = new Set(priceFeed.tradeableSymbols());
   const book = await solvency.read();
+  // A test account is outside the book, so the book's ceiling does not apply
+  // to it. Placement agrees: fpesa_place_trade skips the float limit for these
+  // accounts, and a panel quoting a lower ceiling than the server enforces
+  // would just be wrong.
+  const outsideTheBook = testRig.isTestAccount(req.user?.username);
   res.json({
     // Included so a client loading while the desk is shut knows immediately,
     // rather than finding out by having a tap rejected. Changes after load
@@ -290,7 +296,7 @@ marketRouter.get('/config', async (_req, res) => {
      * Shown so the panel offers a ceiling that is real rather than letting
      * someone type an amount that is only refused after they tap.
      */
-    maxStakeLive: solvency.maxLiveStake(book.headroom),
+    maxStakeLive: outsideTheBook ? env.maxStake : solvency.maxLiveStake(book.headroom),
     payoutRate: env.payoutRate,
     durations: [...ALLOWED_DURATIONS],
     /** Multipliers for the default market; per-market values ship with each instrument. */

@@ -221,6 +221,10 @@ async function main(): Promise<void> {
     // Says loudly if outcomes are being decided by the server rather than the
     // market. Prints nothing at all when it is off, which is the normal case.
     testRig.announce();
+    // Puts the rig's accounts outside the solvency book and — just as
+    // important — brings everyone else back inside it. Runs on every boot,
+    // armed or not, so disarming the rig is enough to restore the book.
+    await testRig.syncFlags();
   }
 
   server.listen(env.port, () => {

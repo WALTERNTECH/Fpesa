@@ -223,6 +223,18 @@ export async function startWithdrawal(user: {
         'You already have a withdrawal being processed. Wait for it to finish.'
       );
     }
+    if (code === 'B2C_LIMIT') {
+      // A test account is outside the solvency book, so the payout wallet is
+      // what limits it. The cap is quoted rather than just refused, because the
+      // whole point of testing this is seeing where the ceiling actually falls.
+      const cap = Number(/B2C_LIMIT:([0-9.]+)/.exec(error.message)?.[1] ?? 0);
+      throw new WalletError(
+        'B2C_LIMIT',
+        'The payout wallet holds KSh ' +
+          cap.toLocaleString('en-KE', { minimumFractionDigits: 2 }) +
+          ' right now, so that is the most this account can withdraw.'
+      );
+    }
     if (code === 'TURNOVER_NOT_MET') {
       // The function appends the shortfall to the code, so the trader is told
       // exactly how much trading is left rather than just being refused.

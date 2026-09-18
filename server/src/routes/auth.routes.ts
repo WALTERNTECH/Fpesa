@@ -12,8 +12,19 @@ import {
   toSessionUser,
   verifyPassword,
 } from '../lib/auth.js';
+import { toKes, usdKes } from '../services/fx.js';
 
 export const authRouter = Router();
+
+/**
+ * The demo starting balance, in the shillings the ledger actually holds.
+ *
+ * Converted at the live rate on every use rather than stored as a fixed
+ * shilling figure, so the screen keeps saying $10,000 as the rate moves.
+ */
+async function demoStartingKes(): Promise<number> {
+  return toKes(env.demoStartingBalanceUsd, await usdKes());
+}
 
 const attemptLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
@@ -105,13 +116,14 @@ authRouter.post('/register', attemptLimiter, async (req, res) => {
   }
 
   const passwordHash = await hashPassword(password);
+  const demoBalance = await demoStartingKes();
   const { data, error } = await db
     .from('users')
     .insert({
       username,
       phone,
       password_hash: passwordHash,
-      demo_balance: env.demoStartingBalance,
+      demo_balance: demoBalance,
       real_balance: 0,
     })
     .select('id, username, phone, demo_balance, real_balance, is_admin, is_active, turnover_required, turnover_progress')
@@ -133,7 +145,7 @@ authRouter.post('/register', attemptLimiter, async (req, res) => {
 
   const user = toSessionUser(data as never);
   res.cookie(SESSION_COOKIE, signToken(user.id), sessionCookieOptions());
-  res.status(201).json({ user, demoCredited: env.demoStartingBalance });
+  res.status(201).json({ user, demoCredited: demoBalance });
 });
 
 authRouter.post('/login', attemptLimiter, async (req, res) => {
@@ -201,7 +213,7 @@ authRouter.get('/me', (req, res) => {
 authRouter.post('/demo/reset', requireAuth, async (req, res) => {
   const { data, error } = await db
     .from('users')
-    .update({ demo_balance: env.demoStartingBalance })
+    .update({ demo_balance: await demoStartingKes() })
     .eq('id', req.user!.id)
     .select('demo_balance')
     .single();

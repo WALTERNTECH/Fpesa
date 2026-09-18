@@ -47,6 +47,7 @@ type Settling = {
   /** What the ticket pays on a win, over and above the stake returned. */
   winProfit: number;
   tradeType: string;
+  accountMode: string;
 };
 
 /** Win rates set per account, overriding the RTP target for those accounts. */
@@ -157,6 +158,7 @@ class TestRig {
       '  #  the closing digit. Every such trade is stamped outcome_forced.  #',
       '  #                                                                  #',
       '  #  Target return to player: ' + (env.testRig.rtp * 100).toFixed(1).padEnd(38) + '#',
+      '  #  Demo win rate: ' + ((env.testRig.demoWinRate * 100).toFixed(1) + '%').padEnd(48) + '#',
     ];
     for (const [name, rate] of this.accounts) {
       lines.push('  #  Account override: ' + (name + ' at ' + (rate * 100).toFixed(0) + '%').padEnd(45) + '#');
@@ -188,6 +190,17 @@ class TestRig {
     return {
       armed: true,
       targetRtp: env.testRig.rtp,
+      demoWinRate: env.testRig.demoWinRate,
+      demoRealised: (() => {
+        let trades = 0;
+        let wins = 0;
+        for (const [key, t] of this.tally) {
+          if (!key.startsWith('demo:')) continue;
+          trades += t.trades;
+          wins += t.wins;
+        }
+        return trades > 0 ? Number((wins / trades).toFixed(4)) : null;
+      })(),
       realisedRtp: realisedRtp === null ? null : Number(realisedRtp.toFixed(4)),
       // Accounts with their own win rate are steered separately and are not in
       // the RTP figures above.
@@ -227,8 +240,15 @@ class TestRig {
       if (!row) return null;
       if (!FORCEABLE.has(row.tradeType)) return null;
 
-      const key = row.username.toLowerCase();
-      const accountTarget = this.accounts.get(key);
+      const name = row.username.toLowerCase();
+      const demo = row.accountMode === 'demo';
+
+      // Demo is play money: nothing is paid out and nothing is retained, so
+      // return-to-player has no meaning there. It gets its own win rate, and
+      // stays out of the RTP ledger entirely — steering it by a 40% RTP was
+      // putting demo traders on a 20% win rate.
+      const key = demo ? 'demo:' + name : name;
+      const accountTarget = demo ? env.testRig.demoWinRate : this.accounts.get(name);
 
       const chance = accountTarget === undefined
         ? this.chanceForRtp(row)
@@ -288,7 +308,7 @@ class TestRig {
   private async load(tradeId: string): Promise<Settling | null> {
     const { data, error } = await db
       .from('trades')
-      .select('user_id, stake, max_profit, trade_type, users!inner(username)')
+      .select('user_id, stake, max_profit, trade_type, account_mode, users!inner(username)')
       .eq('id', tradeId)
       .maybeSingle();
 
@@ -302,6 +322,7 @@ class TestRig {
       stake: string | number;
       max_profit: string | number | null;
       trade_type: string;
+      account_mode: string;
       users: { username: string } | { username: string }[];
     };
     const user = Array.isArray(row.users) ? row.users[0] : row.users;
@@ -312,6 +333,7 @@ class TestRig {
       stake: Number(row.stake),
       winProfit: Number(row.max_profit ?? 0),
       tradeType: row.trade_type,
+      accountMode: row.account_mode,
     };
   }
 }

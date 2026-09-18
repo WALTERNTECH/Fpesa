@@ -181,7 +181,7 @@ const DEFAULT_CONFIG: PlatformConfig = {
   minWithdrawal: 100,
   maxWithdrawal: 250000,
   supportTelegram: 'https://t.me/KRYPTONinv',
-  demoStartingBalance: 10000,
+  demoStartingBalance: 1290000,
 };
 
 const AppContext = createContext<AppValue | null>(null);

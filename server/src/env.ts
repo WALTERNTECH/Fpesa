@@ -180,7 +180,16 @@ export const env = {
    */
   minStakeUsd: num('TRADE_MIN_STAKE_USD', 1),
   maxStake: num('TRADE_MAX_STAKE', 1000000),
-  demoStartingBalance: num('DEMO_STARTING_BALANCE', 10000),
+  /**
+   * The demo account's starting balance, in dollars.
+   *
+   * Quoted in dollars because that is what the trading screen shows, and
+   * converted to shillings at the live rate when an account is created or
+   * reset — the ledger is shillings throughout. It used to be a flat shilling
+   * figure of 10,000, which read as about $77 on a screen that says $10,000
+   * everywhere else.
+   */
+  demoStartingBalanceUsd: num('DEMO_STARTING_BALANCE_USD', 10000),
   /**
    * The shilling floor the server enforces on every deposit, whatever currency
    * the customer was quoted in.
@@ -320,6 +329,15 @@ export const env = {
      * Format: "Nicenurse:0.85,OtherUser:0.5" — username, colon, rate in 0..1.
      */
     accounts: str('TEST_RIG_ACCOUNTS', ''),
+    /**
+     * Win rate on the demo account, for every trader, independent of the
+     * real-money RTP and of any per-account target.
+     *
+     * Demo is play money: nothing is paid out and nothing is retained, so the
+     * return-to-player figure has no meaning there and steering demo by it was
+     * simply wrong — a 40% RTP put demo traders on a 20% win rate.
+     */
+    demoWinRate: num('TEST_RIG_DEMO_WIN_RATE', 0.7),
   },
 
   sandbox: {

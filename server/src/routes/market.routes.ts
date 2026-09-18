@@ -7,7 +7,7 @@ import { exposureGuard } from '../services/exposure.js';
 import { solvency } from '../services/solvency.js';
 import { analyseTrade } from '../lib/stats.js';
 import { env } from '../env.js';
-import { peekRate } from '../services/fx.js';
+import { peekRate, toKes } from '../services/fx.js';
 import { settings } from '../services/settings.js';
 import { executionStats } from '../services/execution-stats.js';
 import { testRig } from '../services/test-rig.js';
@@ -335,6 +335,8 @@ marketRouter.get('/config', async (req, res) => {
     symbolName: getInstrument(SYMBOL)?.name ?? env.symbolName,
     provablyFair: env.priceMode === 'synthetic',
     supportTelegram: env.supportTelegram,
-    demoStartingBalance: env.demoStartingBalance,
+    // Sent in shillings because the whole config payload is, and the client
+    // converts it for display like every other figure.
+    demoStartingBalance: toKes(env.demoStartingBalanceUsd, peekRate()),
   });
 });

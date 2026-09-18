@@ -102,10 +102,32 @@ walletRouter.post('/withdraw', requireAuth, moveLimiter, async (req, res) => {
     return;
   }
 
+  // Quoted in dollars, the same as a deposit, because an account denominated
+  // in dollars on every other screen should not ask for shillings on the way
+  // out. The rate is read here rather than accepted from the browser: what the
+  // client showed was a quote, and this is what is actually paid.
+  const currency = (req.body as { currency?: string }).currency === 'KES' ? 'KES' : 'USD';
+  let amountKes = parsed.data.amount;
+  let quoted: { usd: number; rate: number; kes: number } | null = null;
+
+  if (currency === 'USD') {
+    if (parsed.data.amount < env.minWithdrawalUsd) {
+      res.status(400).json({
+        error: 'AMOUNT_TOO_LOW',
+        message: 'Minimum withdrawal is $' + env.minWithdrawalUsd + '.',
+      });
+      return;
+    }
+    const rate = await usdKes();
+    amountKes = toKes(parsed.data.amount, rate);
+    quoted = { usd: parsed.data.amount, rate, kes: amountKes };
+  }
+
   try {
-    const tx = await startWithdrawal(req.user!, parsed.data.amount, payTo);
+    const tx = await startWithdrawal(req.user!, amountKes, payTo);
     res.status(202).json({
       transaction: tx,
+      quoted,
       message: 'Your withdrawal is on its way to ' + payTo + '.',
     });
   } catch (err) {

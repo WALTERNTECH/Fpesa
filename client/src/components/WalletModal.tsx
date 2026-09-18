@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useApp } from '../store/app';
 import { api, ApiError } from '../lib/api';
-import { ksh, displayPhone } from '../lib/format';
+import { ksh, usd, displayPhone } from '../lib/format';
 import { Modal } from './Modal';
 import type { Transaction } from '../lib/types';
 
@@ -11,7 +11,7 @@ type Stage = 'form' | 'waiting' | 'done';
 const QUICK = [100, 500, 1000, 2500, 5000, 10000];
 
 export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
-  const { closeModal, user, config, refreshUser, pushToast } = useApp();
+  const { closeModal, user, config, refreshUser, pushToast, toUsd } = useApp();
 
   // Turnover is a lifetime running total, so remaining is simply the gap.
   const turnoverRequired = user?.turnoverRequired ?? 0;
@@ -32,16 +32,29 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
   const pollRef = useRef<number | null>(null);
   const deadlineRef = useRef(0);
 
-  // Deposits are quoted in dollars because that is the unit a trading account
-  // is thought about in; withdrawals stay in shillings because that is what
-  // lands on the phone. The ledger is shillings throughout either way.
-  const inUsd = isDeposit && config.depositCurrency === 'USD';
+  // Both directions are quoted in dollars: that is the unit a trading account
+  // is thought about in, and an account that takes dollars in should not ask
+  // for shillings on the way out. The ledger stays in shillings throughout,
+  // and the shilling figure M-Pesa moves is worked out server-side.
+  const inUsd = isDeposit
+    ? config.depositCurrency === 'USD'
+    : config.withdrawalCurrency === 'USD';
   const minimum = isDeposit
     ? (inUsd ? config.minDepositUsd : config.minDeposit)
-    : config.minWithdrawal;
+    : (inUsd ? config.minWithdrawalUsd : config.minWithdrawal);
   const rate = config.usdKes || 129;
   const value = Number(amount);
-  const available = user?.realBalance ?? 0;
+  // The balance is held in shillings, so it has to be brought into whatever
+  // unit the trader is typing in before the two are compared.
+  const availableKes = user?.realBalance ?? 0;
+  const available = inUsd ? toUsd(availableKes) : availableKes;
+
+  /**
+   * Formats an amount the ledger holds in shillings, in whichever unit the
+   * account is denominated in. Amounts M-Pesa actually moves stay in shillings
+   * regardless, because that is the figure the trader sees on their phone.
+   */
+  const money = (kes: number): string => (inUsd ? usd(toUsd(kes)) : ksh(kes, true));
 
   const validationError = (): string | null => {
     if (amount === '') return null;
@@ -51,7 +64,10 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
         ? 'Minimum is $' + minimum + '.'
         : 'Minimum is ' + ksh(minimum, true) + '.';
     }
-    if (!isDeposit && value > available) return 'You only have ' + ksh(available) + ' available.';
+    if (!isDeposit && value > available) {
+      return 'You only have ' +
+        (inUsd ? usd(available) : ksh(available)) + ' available.';
+    }
     return null;
   };
 
@@ -126,11 +142,11 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
   };
 
   /**
-   * What M-Pesa is actually charging, in shillings.
+   * What actually moves over M-Pesa, in shillings.
    *
-   * `value` is what was typed, and on the deposit screen that is dollars — so
-   * showing it with a KSh label read "KSh 1.00" for a $1 deposit that really
-   * charges 129. Once the transaction exists its amount is authoritative,
+   * `value` is what was typed, and that is now dollars on both screens — so
+   * showing it with a KSh label read "KSh 1.00" for a $1 transfer that really
+   * moves 129. Once the transaction exists its amount is authoritative,
    * because the server converted at its own rate; before it comes back the
    * quote is the best available.
    */
@@ -161,7 +177,7 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
             <div className="payout-row" style={{ marginBottom: 16 }}>
               <span className="k">Available to withdraw</span>
               <span className="v tnum" style={{ color: 'var(--ink)' }}>
-                {ksh(available)}
+                {inUsd ? usd(available) : ksh(available)}
               </span>
             </div>
           )}
@@ -173,8 +189,10 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
             <div className="turnover">
               <div className="turnover-head">
                 <span>Trading requirement</span>
+                {/* An account-level figure, so it follows the account's unit
+                    rather than the unit M-Pesa happens to move. */}
                 <span className="tnum">
-                  {ksh(turnoverProgress, true)} / {ksh(turnoverRequired, true)}
+                  {money(turnoverProgress)} / {money(turnoverRequired)}
                 </span>
               </div>
               <div className="turnover-bar" aria-hidden="true">
@@ -184,8 +202,11 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
                 {isDeposit
                   ? 'Deposits must be traded through ' + config.turnoverMultiple +
                     '× before they can be withdrawn. This deposit will add ' +
-                    ksh(Math.max(value, 0) * config.turnoverMultiple, true) + '.'
-                  : ksh(turnoverRemaining) + ' of trading left before you can withdraw.'}
+                    money(
+                      (inUsd ? Math.round(Math.max(value, 0) * rate) : Math.max(value, 0)) *
+                        config.turnoverMultiple
+                    ) + '.'
+                  : money(turnoverRemaining) + ' of trading left before you can withdraw.'}
               </p>
             </div>
           )}
@@ -217,7 +238,8 @@ export function WalletModal({ kind }: { kind: Kind }): JSX.Element {
                 <span>Minimum ${minimum} · $1 = KSh {rate.toFixed(2)}</span>
                 <b className="tnum">
                   {Number.isFinite(value) && value > 0
-                    ? 'M-Pesa will ask for ' + ksh(Math.round(value * rate), true)
+                    ? (isDeposit ? 'M-Pesa will ask for ' : 'You will receive ') +
+                      ksh(Math.round(value * rate), true)
                     : 'Enter an amount'}
                 </b>
               </div>

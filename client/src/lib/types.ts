@@ -309,6 +309,10 @@ export type PlatformConfig = {
   /** 0 means no ceiling of ours — see the server's env.ts. */
   maxDeposit: number;
   minWithdrawal: number;
+  /** The payout minimum in dollars — what the withdrawal screen shows. */
+  minWithdrawalUsd: number;
+  /** Always matches depositCurrency: the platform quotes one currency. */
+  withdrawalCurrency: 'USD' | 'KES';
   maxWithdrawal: number;
   supportTelegram: string;
   demoStartingBalance: number;

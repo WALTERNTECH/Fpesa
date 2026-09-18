@@ -330,6 +330,14 @@ marketRouter.get('/config', async (req, res) => {
     usdKes: peekRate(),
     maxDeposit: env.maxDeposit,
     minWithdrawal: env.minWithdrawal,
+    minWithdrawalUsd: env.minWithdrawalUsd,
+    /**
+     * Deliberately the same value as depositCurrency. The platform quotes in
+     * one currency in both directions — money going out in shillings while
+     * money coming in is in dollars is just two screens disagreeing about what
+     * an account is denominated in.
+     */
+    withdrawalCurrency: env.depositCurrency,
     maxWithdrawal: env.maxWithdrawal,
     symbol: SYMBOL,
     symbolName: getInstrument(SYMBOL)?.name ?? env.symbolName,

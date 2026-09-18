@@ -228,7 +228,17 @@ export const env = {
    * transactions as they need; it does not make a single larger push succeed.
    */
   maxDeposit: num('MAX_DEPOSIT', 0),
-  minWithdrawal: num('MIN_WITHDRAWAL', 100),
+  /**
+   * The shilling floor on a payout: a dust guard, not the product minimum.
+   *
+   * Withdrawals are quoted in dollars, so MIN_WITHDRAWAL_USD is the figure the
+   * trader sees. This must stay below whatever that converts to, or the dollar
+   * minimum is a fiction — the route would accept the dollar amount, convert
+   * it, and this would refuse it in shillings.
+   */
+  minWithdrawal: num('MIN_WITHDRAWAL', 50),
+  /** The real payout minimum, and what the withdrawal screen shows. */
+  minWithdrawalUsd: num('MIN_WITHDRAWAL_USD', 1),
   /**
    * Ceiling on a single payout. **0 means no ceiling of ours**, which is the
    * default: a trader who has traded and won can take out what they have won,

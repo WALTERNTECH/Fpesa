@@ -30,7 +30,23 @@ export type WebhookHint = {
 };
 
 export class PaymentError extends Error {
-  constructor(public code: string, message: string, public status = 502) {
+  /**
+   * `message` is shown to the trader. `detail` is what actually went wrong, for
+   * the log and the transaction record.
+   *
+   * The two are separated because the provider's own wording is written for
+   * whoever runs the integration, not for a customer: "Insufficient service
+   * token balance to cover B2C fee" tells an operator exactly what to top up
+   * and tells a trader nothing except that something is broken. Putting the
+   * raw text on screen also invites the reading that the trader's own money is
+   * missing, when a failed payout is refunded in full.
+   */
+  constructor(
+    public code: string,
+    message: string,
+    public status = 502,
+    public detail: string | null = null
+  ) {
     super(message);
   }
 }

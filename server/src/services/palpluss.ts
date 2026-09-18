@@ -165,22 +165,42 @@ async function call<T>(method: Method, path: string, body?: unknown): Promise<T>
     const { message, code } = errorText(out.parsed, out.status);
     console.error('[palpluss] ' + method + ' ' + path + ' -> ' + out.status + ' ' + out.text.slice(0, 400));
 
-    // These are operator problems, not trader problems, so they are worth
-    // saying plainly in the log rather than only as a generic failure.
+    // These are operator problems, not trader problems. Each one names the
+    // thing to go and fix, because the two Palpluss wallets are easy to
+    // confuse: the B2C wallet holds the money being paid out, and the service
+    // token balance pays the per-payout fee. A funded B2C wallet and an empty
+    // service balance fails every payout while looking, from the balance the
+    // platform syncs, exactly like a wallet with plenty in it.
+    let operatorDetail = message;
     if (code === 'INSUFFICIENT_SERVICE_BALANCE' || out.status === 402) {
-      console.error('[palpluss] service wallet is empty — top it up in the console');
+      operatorDetail =
+        'Palpluss service token balance too low to cover the B2C fee. ' +
+        'Top up the SERVICE TOKEN balance in the Palpluss console — this is a ' +
+        'different pot from the B2C payout wallet, which is unaffected. ' +
+        'Provider said: ' + message;
+      console.error('[palpluss] ' + operatorDetail);
+    } else if (out.status === 409) {
+      operatorDetail =
+        'B2C payout wallet has insufficient funds for this payout. ' +
+        'Provider said: ' + message;
+      console.error('[palpluss] ' + operatorDetail);
+    } else if (out.status === 403) {
+      operatorDetail = 'Palpluss account not verified or inactive. Provider said: ' + message;
+      console.error('[palpluss] ' + operatorDetail);
     }
-    if (out.status === 409) {
-      console.error('[palpluss] B2C wallet has insufficient funds for this payout');
-    }
-    if (out.status === 403) {
-      console.error('[palpluss] account not verified or inactive');
-    }
+
+    // The trader is told the truth that concerns them — nothing was taken —
+    // rather than the provider's integration wording.
+    const operatorSide = out.status === 402 || out.status === 403 || out.status === 409;
 
     throw new PaymentError(
       'PAYMENTS_REJECTED',
-      message,
-      out.status === 400 ? 400 : 502
+      operatorSide
+        ? 'Withdrawals are temporarily unavailable. Nothing has been taken from ' +
+          'your balance — please try again shortly.'
+        : message,
+      out.status === 400 ? 400 : 502,
+      operatorDetail
     );
   }
   return out.parsed as T;

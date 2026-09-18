@@ -276,7 +276,19 @@ export async function startWithdrawal(user: {
     return toPublicTx({ ...row, provider_txn_id: provider.providerId });
   } catch (err) {
     // Payout never left our side — hand the money straight back.
-    await finaliseTransaction(ref, 'FAILED', null, null, 'Payout could not be sent');
+    //
+    // The provider's own reason is recorded rather than a generic line. Five
+    // payouts failed here with "Payout could not be sent" against a funded B2C
+    // wallet, and the record gave no way to tell that the thing actually empty
+    // was the separate service-fee balance. The reason is the whole value of
+    // the row when someone comes to ask why.
+    const reason =
+      err instanceof PaymentError && err.detail
+        ? err.detail.slice(0, 500)
+        : err instanceof Error && err.message
+          ? 'Payout could not be sent: ' + err.message.slice(0, 400)
+          : 'Payout could not be sent';
+    await finaliseTransaction(ref, 'FAILED', null, null, reason);
     if (err instanceof PaymentError) throw new WalletError(err.code, err.message, err.status);
     throw new WalletError('WITHDRAWAL_FAILED', 'Could not send the payout.', 502);
   }
